@@ -5,6 +5,7 @@
 import re
 import os
 import numpy as np
+from sklearn.model_selection import train_test_split
 
 
 ### Q1
@@ -26,7 +27,7 @@ def preprocess_line(line):
     # remove replace digits with 0
     line = re.sub('[1-9]', '0',line) 
     # remove non-English alphabet, spaces, or .
-    return re.sub('[^a-z0.\s]', '', line)
+    return re.sub('[^a-z0.\s#]', '', line)
 
     
 ### Q2
@@ -45,6 +46,16 @@ repeated probabilities as well. I believe this is backoff but need to do more an
 ### Q3
 
 
+def write_to_file(model, file_name):
+    '''
+    '''
+    with open(file_name, 'w') as f:
+        dict_sorted = dict(sorted(model.items()))
+        for key, value in dict_sorted.items():
+            f.write(key + '    ' + str(value))
+            f.write('\n')
+
+
 def generate_counts(infile, n):
     '''
     Returns of dictionary of counts for each unique n-long character sequence for a 
@@ -58,18 +69,16 @@ def generate_counts(infile, n):
         n_counts (dict): dictionary of counts for each character sequence
     '''
     n_counts = {}
-    # file was reading in as TestIOWrapper instead of txt file
-    # remove line 63 if file is successfully read in as raw txt
-    cleanpath = os.path.abspath(infile)
-    with open(cleanpath, 'r') as f:
-        for line in f:
-            line = preprocess_line(line) 
-            for j in range(len(line)-(n)):
-                n_gram = line[j:j+n]
-                if n_gram in n_counts:
-                    n_counts[n_gram] += 1
-                else:
-                    n_counts[n_gram] = 1
+    #with open(infile, 'r') as f:
+        #for line in f:
+    for line in infile:
+        line = preprocess_line(line) 
+        for j in range(len(line)-(n)):
+            n_gram = line[j:j+n]
+            if n_gram in n_counts:
+                n_counts[n_gram] += 1
+            else:
+                n_counts[n_gram] = 1
     return n_counts
 
 
@@ -117,8 +126,34 @@ def ngram_model(infile, n, add_alpha=None):
         norm_counts = {key: (value + alpha)  / (sum_counts + alpha*vocab_size) \
                              for key, value in n_counts.items()}  
 
-    write_to_file(norm_counts, str(n) + '-gram.txt')
-    return norm_counts 
+    #write_to_file(norm_counts, str(n) + '-gram.txt')
+    if add_alpha != None:
+        return norm_counts, n_minus_counts 
+    else:
+        return norm_counts
+
+def perplexity(infile, n_gram_model, n, nminus_counts=None, add_alpha=None):
+    '''
+    '''
+    p_log = 0
+    n_gram_count = 0
+    for line in infile:
+        line = preprocess_line(line) 
+        for j in range(len(line)-(n)):
+            n_gram = line[j:j+n]
+            n_gram_count += 1
+            if n_gram in n_gram_model:
+                p_log += np.log2(n_gram_model[n_gram])
+            elif add_alpha != None:
+                n_minus_key = n_gram[:n-1]
+                nminus_count = 0 
+                if n_minus_key in nminus_counts.keys():
+                    nminus_count = nminus_counts[n_minus_key]
+                p_log += np.log2(add_alpha / (nminus_count + 
+                                         (add_alpha*n_gram_count)) )
+            else:
+                raise Exception('Zero probability value. Implement smoothing.')
+    return 2**(-1/n_gram_count * p_log) 
 
 
 def interpolation(infile, n, lambdas):
@@ -154,25 +189,46 @@ def interpolation(infile, n, lambdas):
         # add full weighted sum for a single n-character sequence to final dict
         inter_norm[key] = norm_value
 
-        write_to_file(inter_norm)
-            
-
-def write_to_file(model, file_name):
-    '''
-    '''
-    with open(file_name, 'w') as f:
-        dict_sorted = dict(sorted(model.items()))
-        for key, value in dict_sorted.items():
-            f.write(key + '    ' + str(value))
-            f.write('\n')
-                
+        #write_to_file(inter_norm)
+        return inter_norm
 
 
-filepath = '/Users/brianlambert/Downloads/assignment1-data/training.en.txt'
-#interpolation(filepath, 3, [0.5, 0.25, 0.25])
-ngram_model(filepath, 3)
+data = open('training.en.txt').read().splitlines()
+data_train, data_valid = train_test_split(data, test_size=0.2, shuffle=True)
+data_valid, data_test = train_test_split(data_valid, test_size=0.5, shuffle=True)
 
-                
+
+lambdas = [0.5, 0.25 ,0.25]
+n = 3
+ngram_array = [dict() for i in range(n)] 
+for i in range(n):
+    ngram_array[i] = ngram_model(data_train, i+1)
+
+model = {}
+p_log = 0
+n_gram_count = 0
+for line in data_valid:
+    line = preprocess_line(line) 
+    for j in range(len(line)-(n)):
+        n_gram = line[j:j+n]
+        n_gram_count += 1
+        probability = 0
+        for i in range(n):
+            if n_gram[:i+1] in ngram_array[i]:
+                probability += lambdas[i]*ngram_array[i][n_gram[:i+1]]
+        model[n_gram] = probability 
+        p_log += np.log2(probability)
+
+write_to_file(model, 'interpolation.txt')
+print(2**(-1/n_gram_count * p_log)) 
+
+
+'''
+trigram, bigram_counts = ngram_model(data_train, 3, add_alpha=1)
+print(perplexity(data_train, trigram, 3, bigram_counts, add_alpha=1))
+print(perplexity(data_valid, trigram, 3, bigram_counts, add_alpha=1))
+'''
+
 
 
 
