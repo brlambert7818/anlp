@@ -7,6 +7,7 @@ import os
 import numpy as np
 from sklearn.model_selection import train_test_split
 from itertools import product
+from scipy import optimize
 
 
 ### Q1
@@ -139,7 +140,7 @@ def ngram_model(infile, n, add_alpha=None):
         norm_counts = {key: (value + alpha) / (sum_counts + alpha * vocab_size)
                        for key, value in n_counts.items()}
 
-    write_to_file(norm_counts, str(n) + '-gram.txt')
+    #write_to_file(norm_counts, str(n) + '-gram.txt')
     return norm_counts
 
 
@@ -176,6 +177,8 @@ def generate_text(model, n, length, br):
 
     print('Generated Text: ', text)
 
+
+# reading in modelbr to a probability dict
 def input_model(infile):
     model = {}
     data = open(infile).read().splitlines()
@@ -184,11 +187,12 @@ def input_model(infile):
         model[key] = float(value)
     return model
 
+
 data = open('training.en.txt').read().splitlines()
 data_train, data_valid = train_test_split(data, test_size=0.2, shuffle=True)
 data_valid, data_test = train_test_split(data_valid, test_size=0.5, shuffle=True)
 
-# trigram = ngram_model(data_train, 3, add_alpha=0.07)
+#trigram = ngram_model(data_train, 3, add_alpha=0.07)
 # generate_text(trigram, 3, 300, br=False)
 
 # print(perplexity(data_train, trigram, 3))
@@ -196,31 +200,36 @@ data_valid, data_test = train_test_split(data_valid, test_size=0.5, shuffle=True
 # sub_dict = {key: value for key, value in trigram.items() if key.startswith('ng') }
 # write_to_file(sub_dict, 'ngdict.txt')
 
-model_br = input_model('model-br.en')
-print(perplexity(data_train, model_br, 3))
-generate_text(model_br, 3, 300, br=True)
+# model_br = input_model('model-br.en')
+# print(perplexity(data_train, model_br, 3))
+# generate_text(model_br, 3, 300, br=True)
 
 # interpolation test
-# lambdas = [0.5, 0.25, 0.25]
-# n = 3
-# ngram_array = [dict() for i in range(n)]
-# for i in range(n):
-#     ngram_array[i] = ngram_model(data_train, i + 1)
-#
-# model = {}
-# p_log = 0
-# n_gram_count = 0
-# for line in data_valid:
-#     line = preprocess_line(line)
-#     for j in range(len(line) - (n)):
-#         n_gram = line[j:j + n]
-#         n_gram_count += 1
-#         probability = 0
-#         for i in range(n):
-#             if n_gram[:i + 1] in ngram_array[i]:
-#                 probability += lambdas[i] * ngram_array[i][n_gram[:i + 1]]
-#         model[n_gram] = probability
-#         p_log += np.log2(probability)
+def interpolation(lambdas):
+    n = 3
+    ngram_array = [dict() for i in range(n)]
+    for i in range(n):
+        ngram_array[i] = ngram_model(data_train, i + 1)
+    #infile = open('training.en.txt').read().splitlines()
+    infile = data_valid
+    model = {}
+    p_log = 0
+    n_gram_count = 0
+    for line in infile:
+        line = preprocess_line(line)
+        for j in range(len(line) - (n)):
+            n_gram = line[j:j + n]
+            n_gram_count += 1
+            probability = 0
+            for i in range(n):
+                if n_gram[:i + 1] in ngram_array[i]:
+                    probability += lambdas[i] * ngram_array[i][n_gram[:i + 1]]
+            model[n_gram] = probability
+            p_log += np.log2(probability)
+    return 2**(-1/n_gram_count * p_log)
 
-# write_to_file(model, 'interpolation.txt')
-# print(2**(-1/n_gram_count * p_log))
+# optim = optimize.minimize(interpolation, [0.5, 0.25, 0.25],
+#                           constraints=({'type': 'eq', 'fun': lambda x:  x[0] + x[1] + x[2] - 1}))
+# print(optim)
+# print(interpolation([1.79179297e-04, 2.52374153e-01, 7.47446668e-01]))
+
