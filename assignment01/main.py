@@ -155,29 +155,50 @@ def perplexity(infile, n_gram_model, n):
     return 2 ** (-1 / n_gram_count * p_log)
 
 
-def generate_text(model, n, length):
-    text = max(model, key=model.get)
+def generate_text(model, n, length, br):
+    init_outcomes = np.array(list(model.keys()))
+    init_probs = np.array(list(model.values()))
+    init_bins = np.cumsum(init_probs)
+    text = init_outcomes[np.digitize(np.random.sample(1), init_bins)][0]
     while len(text) < length:
+        if text[-1] == '#':
+            text += '#'
         condition = text[-(n-1):]
-        print('full text: ', text)
-        print('condition: ', condition)
         sub_dict = {key: value for key, value in model.items() if key.startswith(condition)}
-        print('max key: ', max(sub_dict, key=sub_dict.get))
-        text += max(sub_dict, key=sub_dict.get)[-1]
+        outcomes = np.array(list(sub_dict.keys()))
+        probs = np.array(list(sub_dict.values()))
+        bins = np.cumsum(probs)
+        if not br:
+            if bins[-1] != 1:
+                bins[-1] = 1
+        sample = outcomes[np.digitize(np.random.random_sample(), bins)][-1]
+        text += sample
 
+    print('Generated Text: ', text)
+
+def input_model(infile):
+    model = {}
+    data = open(infile).read().splitlines()
+    for line in data:
+        (key, value) = line.split('\t')
+        model[key] = float(value)
+    return model
 
 data = open('training.en.txt').read().splitlines()
 data_train, data_valid = train_test_split(data, test_size=0.2, shuffle=True)
 data_valid, data_test = train_test_split(data_valid, test_size=0.5, shuffle=True)
 
-trigram = ngram_model(data_train, 3, add_alpha=0.07)
+# trigram = ngram_model(data_train, 3, add_alpha=0.07)
+# generate_text(trigram, 3, 300, br=False)
+
 # print(perplexity(data_train, trigram, 3))
 # print(perplexity(data_valid, trigram, 3))
-#sub_dict = {key: value for key, value in trigram.items() if key.startswith('ng') }
-#write_to_file(sub_dict, 'ngdict.txt')
+# sub_dict = {key: value for key, value in trigram.items() if key.startswith('ng') }
+# write_to_file(sub_dict, 'ngdict.txt')
 
-generate_text(trigram, 3, 20)
-
+model_br = input_model('model-br.en')
+print(perplexity(data_train, model_br, 3))
+generate_text(model_br, 3, 300, br=True)
 
 # interpolation test
 # lambdas = [0.5, 0.25, 0.25]
