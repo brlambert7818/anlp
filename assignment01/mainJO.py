@@ -11,41 +11,50 @@ from itertools import product
 ### Q1
 
 def preprocess_line(line):
-    '''
-    Takes line of text and returns string which removes all characters from line not
-    in English alphabet, space, digits, or '.'. All characters are lowercased and all
-    digits are converted to '0'.
-    Parameters:
-        text (str): single line of input text
+    """ Takes line of text and returns string which removes all characters from line not
+    in English alphabet, space, digits, '#' or '.'. All characters are lowercased and all
+    digits are converted to '0'. Each line is also encased in '#' characters. 
+    Args:
+       inline (str): single line of input text
     
     Returns:
-        text_processed (str): single line of text with unwanted characters removed
-    '''
+        text_processed (str): single line of text with unwanted characters removed and
+        encased in #'s
+    """
     # lowercase all letters
     line = line.lower()
     # remove replace digits with 0
     line = re.sub('[1-9]', '0', line)
+    #add #'s around a sequence
     if (not line.startswith('#')) and (not line.endswith('#')):
         line = '#'+line+'#'
-    # remove non-English alphabet, spaces, or .
+    # remove non-English alphabet, spaces, #, or .
     return re.sub('[^a-z0.\s#]', '', line)
 
 
 ### Q2
-
 '''
-The estimation method uses a base of maximum likelihood estimation (MLE) by simply
-counting the number of observations of a specific 3-char str and dividindg by the 
-total number of 3-char strs in the corpus. However, there are no probabilities equal
-to zero, so this means that some sort of smoothing was used. I do not belive this is
-only add-alpha smoothing because we do not see the same probability for all unseen
-events. The most common probability is 3.333e-02, but there are numerous other 
-repeated probabilities as well. I believe this is backoff but need to do more analysisto show that it's not interpolation.  
+We think that the method used to estimate probabilities in the provided model-br.en is
+add-alpha smoothing. The reason behind that judgment is that we don't find any probabilities 
+equal zero but can notice many equal to 3.333e-02 which is the inverse of vocabulary (v=30).
+This in turn suggests that the formula for conditional probablity was supplemented in the 
+numerator with +/alpha and in the denominator with +/alpha*v. That means the trigram and 
+bigram counts were zero. As a result alphas cancel out and we remain with 1/v=3.333e-02.
+Moreover, we think the estimation method cannot be interpolation nor backoff, since it's
+unlikely that we would end up with so many values of 3.333e-02, but rather values multiplied 
+by backoff weights or three lambdas (for interpolation) which would make values more varied. 
 '''
 
 ### Q3
 
 def write_to_file(model, file_name):
+    """ Writes a dictionary to a text file with each line containing a key and its value
+    Args:
+        model (dict): language model with n-gram as key and its probability as value
+        file_name (str): name of output file
+    Returns:
+        None: creates file in current directory
+    """
     with open(file_name, 'w') as f:
         dict_sorted = dict(sorted(model.items()))
         for key, value in dict_sorted.items():
@@ -54,18 +63,15 @@ def write_to_file(model, file_name):
 
 
 def generate_counts(infile, n):
-    '''
-    Returns of dictionary of counts for each unique n-long character sequence for a 
-    give text file.
-    Parameters:
-        infile (text file): Text file to use as training data 
+    """ Returns a dictionary of counts for each unique n-character string in a given 
+    text file and supplements it with missing strings and assigns count 0.
+    Args:
+        infile (txt file): Text file to use as training data
         n (int): desired size of n_gram
     Returns: 
-        n_counts (dict): dictionary of counts for each character sequence
-    '''
+        n_counts (dict): dictionary of counts for each n-character string
+    """
     n_counts = {}
-    # with open(infile, 'r') as f:
-    # for line in f:
     for line in infile:
         line = preprocess_line(line)
         for j in range(len(line) - (n-1)):
@@ -78,6 +84,7 @@ def generate_counts(infile, n):
     all_combos = product('#abcdefghijklmnopqrstuvwxyz0. ', repeat=n)
     if n == 1:
         all_combos = [a for a in all_combos]
+#        all_combos = list('#abcdefghijklmnopqrstuvwxyz0. ')
     if n == 2:
         all_combos = [a + b for a, b in all_combos]
         regex = re.compile(r'##')
@@ -92,19 +99,17 @@ def generate_counts(infile, n):
     return all_combo_dict
 
 def ngram_model(infile, n, add_alpha=None):
-    '''
-    Creates an n-gram character language model using a training data set and outputs 
+    """ Creates an n-character language model using a training data set and outputs
     a dictionary of the model probabilities.   
-    Parameters:
+    Args:
         infile (text file): Text file to use as training data 
-        n (int): desired size of n_gram
-        add_alpha (float): optional function parameter that implement add-alpha 
-        smoothing. 
+        n (int): desired size of n_grams
+        add_alpha (float): optional function parameter to implement add-alpha smoothing.
     
     Returns:
         norm_counts (dict): all n-character sequences with estimated normalized
         probabilities 
-    '''
+    """
     if n < 1:
         raise Exception('n must be >= 1')
 
@@ -120,28 +125,41 @@ def ngram_model(infile, n, add_alpha=None):
 
     norm_counts = {}
     n_counts = generate_counts(infile, n)
-    if n > 1:
-        n_minus_counts = generate_counts(infile, n-1)
-        # find the counts for the n-1 gram model to use for the divisor in
-        # probability calculation
-        for key, value in n_counts.items():
-            n_minus_key = key[:n - 1]
-            if n_minus_counts[n_minus_key] != 0 or add_alpha is not None:
-                norm_counts[key] = (n_counts[key] + alpha) \
-                                   / (n_minus_counts[n_minus_key] + alpha * vocab_size)
-            else:
-                norm_counts[key] = 0
-            # unigram model doesn't need counts from n-1 gram model
-    else:
-        sum_counts = sum(n_counts.values())
-        norm_counts = {key: (value + alpha) / (sum_counts + alpha * vocab_size)
-                       for key, value in n_counts.items()}
+    n_minus_counts = generate_counts(infile, n-1)
+    
+    # find the counts for the n-1 gram model to use for the divisor in
+    # probability calculation
+    for key, value in n_counts.items():
+        n_minus_key = key[:n - 1]
+        if n_minus_counts[n_minus_key] != 0 or add_alpha is not None:
+            norm_counts[key] = (n_counts[key] + alpha) \
+                               / (n_minus_counts[n_minus_key] + alpha * vocab_size)
+        else:
+            norm_counts[key] = 0
 
-    write_to_file(norm_counts, str(n) + '-gram.txt')
+#    write_to_file(norm_counts, str(n) + '-gram.txt')
     return norm_counts
 
 
-def perplexity(infile, n_gram_model, n):
+def perplexity(infile, n_gram_model, n): #param, model_type, n, training_data, valid_data
+     """ Perplexity is the measure of how well a probability distribution predicts a sample
+    Args:
+        param (int or list): int represent the alpha for add-alpha smoothing, list
+        representing the lambdas for interpolation smoothing
+        model_type (str): Either 'ngram add alpha' or 'interpolation'
+        n (int): desired size of n_grams
+        training_data (text file): Text file to use as training data
+        valid_data (text file): Text file to use as validation or testing data
+    Returns:
+        (float): perplexity calculation for given model
+    """
+    
+#    model = None
+#    if model_type == 'ngram add alpha':
+#        model = ngram_model(training_data, n, param)
+#    elif model_type == 'interpolation':
+#        model = interpolation(training_data, n, param)
+    
     p_log = 0
     n_gram_count = 0
     for line in infile:
@@ -151,8 +169,6 @@ def perplexity(infile, n_gram_model, n):
             n_gram_count += 1
             p_log += np.log2(n_gram_model[n_gram])
     return 2 ** (-1 / n_gram_count * p_log)
-
-line = '##abaab#'
 
 def find_optimal_alpha(alphas, validation_set, train_set, n):
     '''
@@ -233,7 +249,18 @@ trigramEs = ngram_model(data_trainEs, 3, add_alpha=best_alphaEs)
 
 ### Q4 ###
 
-def generate_text(model, n, length, br):
+def generate_text(model, n, length):
+    """ Generates a 'length'-character text based on a given n-gram model.
+    
+    Args:
+        model (dict): From what model to generate text
+        n (int): desired size of n-grams
+        length (int): desired length of a generated text
+        
+    Returns:
+        text (str): Desired generated text of length 'length' 
+    
+    """
     init_model = {key: value for key, value in model.items() if key.startswith('#') and not key.endswith('#')}
     init_outcomes = np.array(list(init_model.keys()))
     init_probs = np.array(list(init_model.values()))
@@ -247,9 +274,6 @@ def generate_text(model, n, length, br):
         outcomes = np.array(list(sub_dict.keys()))
         probs = np.array(list(sub_dict.values()))
         bins = np.cumsum(probs)/np.sum(probs)
-        if not br:
-            if bins[-1] != 1:
-                bins[-1] = 1
         sample = outcomes[np.digitize(np.random.random_sample(), bins)][-1]
         text += sample
 
@@ -257,6 +281,14 @@ def generate_text(model, n, length, br):
 #    return text
 
 def input_model(infile):
+    """ Loads in a pre-trained model file and converts it into a dictionary based model.
+    
+    Args:
+        infile (text file): Text file with a pre-trained model.
+    
+    Returns:
+        model (dict): Model with strings and their corresponding probabilities.
+    """
     model = {}
     data = open(infile).read().splitlines()
     for line in data:
