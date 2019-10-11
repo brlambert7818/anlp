@@ -119,17 +119,16 @@ def ngram_model(infile, n, add_alpha=None):
 
     norm_counts = {}
     n_counts = generate_counts(infile, n)
-    if True:
-        n_minus_counts = generate_counts(infile, n-1)
-        # find the counts for the n-1 gram model to use for the divisor in
-        # probability calculation
-        for key, value in n_counts.items():
-            n_minus_key = key[:n - 1]
-            if n_minus_counts[n_minus_key] != 0 or add_alpha is not None:
-                norm_counts[key] = (n_counts[key] + alpha) \
-                                   / (n_minus_counts[n_minus_key] + alpha * vocab_size)
-            else:
-                norm_counts[key] = 0
+    n_minus_counts = generate_counts(infile, n-1)
+    # find the counts for the n-1 gram model to use for the divisor in
+    # probability calculation
+    for key, value in n_counts.items():
+        n_minus_key = key[:n - 1]
+        if n_minus_counts[n_minus_key] != 0 or add_alpha is not None:
+            norm_counts[key] = (n_counts[key] + alpha) \
+                               / (n_minus_counts[n_minus_key] + alpha * vocab_size)
+        else:
+            norm_counts[key] = 0
     # creates output file for the model matching the model-br key \tab probability format
     #write_to_file(norm_counts, str(n) + '-gram.txt')
     return norm_counts
@@ -235,25 +234,42 @@ data_valid, data_test = train_test_split(data_valid, test_size=0.5, shuffle=True
 # generate_text(model_br, 3, 300, br=True)
 
 
-# test of optimization function to find alpha or lambdas parameters
-def testOptim():
+def optimInterpolation():
+    """ Find the optimal lambda parameters for interpolation trigram smoothing model
+
+    Returns:
+        optim.x (ndarray): array of optimized lambda parameters
+    """
     model = 'interpolation'
     n = 3
     train = data_train
     valid = data_valid
     optim_args = (model, n, train, valid)
-    #optim = optimize.minimize(perplexity, 0.1, args=optim_args)
     optim = optimize.minimize(perplexity,
-                              [0.5, 0.25, 0.25],
+                              [0.05, 0.2, 0.75],
                               args=optim_args,
                               constraints=({'type': 'eq', 'fun': lambda x:  x[0] + x[1] + x[2] - 1}))
-    print(optim)
+    return optim.x
 
 
-model = interpolation(data_train, 3, [0.00270505, 0.27101636, 0.72627859])
+def optimAddAlpha():
+    """ Find the optimal alpha parameter for add-alpha trigram smoothing model
+
+    Returns:
+        optim.x (float):  optimized alpha parameter
+    """
+    model = 'ngram add alpha'
+    n = 3
+    train = data_train
+    valid = data_valid
+    optim_args = (model, n, train, valid)
+    optim = optimize.minimize(perplexity, 0.07, args=optim_args)
+    return float(optim.x)
+
+#model = interpolation(data_train, 3, [0.00270505, 0.27101636, 0.72627859])
 #print(perplexity([.05, .25, .7], 'interpolation', 3, data_train, data_valid))
 #model = ngram_model(data_train, 3, 0.07)
-write_to_file(model, 'interpolation.txt')
+#write_to_file(model, 'interpolation.txt')
 
 # sub_dict = {key: value for key, value in model.items() if key.startswith('.')}
 # count = 0
@@ -261,4 +277,3 @@ write_to_file(model, 'interpolation.txt')
 #     count += value
 # print(count)
 
-generate_text(model, 3, 300, False)
