@@ -1,9 +1,8 @@
-'''
+"""
 @ author: Brian Lambert
-'''
+"""
 
 import re
-import os
 import numpy as np
 from sklearn.model_selection import train_test_split
 from itertools import product
@@ -12,20 +11,20 @@ from scipy import optimize
 
 ### Q1
 
-def preprocess_line(line):
-    '''
-    Takes line of text and returns string which removes all characters from line not
+
+def preprocess_line(inline):
+    """ Takes line of text and returns string which removes all characters from line not
     in English alphabet, space, digits, or '.'. All characters are lowercased and all
     digits are converted to '0'.
 
-    Parameters:
-        text (str): single line of input text
+    Args:
+       inline (str): single line of input text
     
     Returns:
         text_processed (str): single line of text with unwanted characters removed
-    '''
+    """
     # lowercase all letters
-    line = line.lower()
+    line = inline.lower()
     # remove replace digits with 0
     line = re.sub('[1-9]', '0', line)
     # remove non-English alphabet, spaces, or .
@@ -34,21 +33,20 @@ def preprocess_line(line):
 
 ### Q2
 
-'''
-The estimation method uses a base of maximum likelihood estimation (MLE) by simply
-counting the number of observations of a specific 3-char str and dividindg by the 
-total number of 3-char strs in the corpus. However, there are no probabilities equal
-to zero, so this means that some sort of smoothing was used. I do not belive this is
-only add-alpha smoothing because we do not see the same probability for all unseen
-events. The most common probability is 3.333e-02, but there are numerous other 
-repeated probabilities as well. I believe this is backoff but need to do more analysisto show that it's not interpolation.  
-'''
-
 
 ### Q3
 
 
 def write_to_file(model, file_name):
+    """ Writes a dictionary to a text file with each line containing a key and its value
+
+    Args:
+        model (dict): language model with n-gram as key and its probability as value
+        file_name (str): name of output file
+
+    Returns:
+        None: creates file in current directory
+    """
     with open(file_name, 'w') as f:
         dict_sorted = dict(sorted(model.items()))
         for key, value in dict_sorted.items():
@@ -57,17 +55,16 @@ def write_to_file(model, file_name):
 
 
 def generate_counts(infile, n):
-    '''
-    Returns of dictionary of counts for each unique n-long character sequence for a 
+    """ Returns of dictionary of counts for each unique n-character sequence in a
     give text file.
 
-    Parameters:
-        infile (text file): Text file to use as training data 
+    Args:
+        infile (txt file): Text file to use as training data
         n (int): desired size of n_gram
 
     Returns: 
-        n_counts (dict): dictionary of counts for each character sequence
-    '''
+        n_counts (dict): dictionary of counts for each n-character sequence
+    """
     n_counts = {}
     # with open(infile, 'r') as f:
     # for line in f:
@@ -82,7 +79,8 @@ def generate_counts(infile, n):
 
     all_combos = product('abcdefghijklmnopqrstuvwxyz0. ', repeat=n)
     if n == 1:
-        all_combos = [a for a in all_combos]
+        #all_combos = [a for a in all_combos]
+        all_combos = list('abcdefghijklmnopqrstuvwxyz0. ')
     if n == 2:
         all_combos = [a + b for a, b in all_combos]
     if n == 3:
@@ -92,21 +90,20 @@ def generate_counts(infile, n):
     all_combo_dict.update(n_counts)
     return all_combo_dict
 
+
 def ngram_model(infile, n, add_alpha=None):
-    '''
-    Creates an n-gram character language model using a training data set and outputs 
+    """ Creates an n-character language model using a training data set and outputs
     a dictionary of the model probabilities.   
 
-    Parameters:
+    Args:
         infile (text file): Text file to use as training data 
-        n (int): desired size of n_gram
-        add_alpha (float): optional function parameter that implement add-alpha 
-        smoothing. 
+        n (int): desired size of n_grams
+        add_alpha (float): optional function parameter to implement add-alpha smoothing.
     
     Returns:
         norm_counts (dict): all n-character sequences with estimated normalized
         probabilities 
-    '''
+    """
     if n < 1:
         raise Exception('n must be >= 1')
 
@@ -119,11 +116,10 @@ def ngram_model(infile, n, add_alpha=None):
         else:
             alpha = add_alpha
             vocab_size = 29
-            # vocab_size = len(generate_counts(infile, 1))
 
     norm_counts = {}
     n_counts = generate_counts(infile, n)
-    if n > 1:
+    if True:
         n_minus_counts = generate_counts(infile, n-1)
         # find the counts for the n-1 gram model to use for the divisor in
         # probability calculation
@@ -134,25 +130,64 @@ def ngram_model(infile, n, add_alpha=None):
                                    / (n_minus_counts[n_minus_key] + alpha * vocab_size)
             else:
                 norm_counts[key] = 0
-            # unigram model doesn't need counts from n-1 gram model
-    else:
-        sum_counts = sum(n_counts.values())
-        norm_counts = {key: (value + alpha) / (sum_counts + alpha * vocab_size)
-                       for key, value in n_counts.items()}
-
+    # creates output file for the model matching the model-br key \tab probability format
     #write_to_file(norm_counts, str(n) + '-gram.txt')
     return norm_counts
 
 
-def perplexity(infile, n_gram_model, n):
+def interpolation(data_train, n, lambdas):
+    """ Creates an n-gram language model using interpolation smoothing
+
+    Args:
+        data_train (text file): Text file to use as training data
+        n (int): desired size of n_grams
+        lambdas (list): list of weights of length n to be weight the probability of each
+                        n-gram model. List order should be (1, 2, ..., n-1, n) for
+                        n-gram size = n
+    Returns:
+        model (dict): all n-character sequences with estimated probabilities
+    """
+    ngram_array = [dict() for i in range(n)]
+    for i in range(n):
+        ngram_array[i] = ngram_model(data_train, i + 1)
+    model = {}
+    for key, value in ngram_array[-1].items():
+        key_prob = 0
+        for i in range(n):
+            sub_key = key[:i+1]
+            key_prob += lambdas[i]*ngram_array[i][sub_key]
+        model[key] = key_prob
+    return model
+
+
+def perplexity(param, model_type, n, training_data, valid_data):
+    """ Perplexity is the measure of how well a probability distribution predicts a sample
+
+    Args:
+        param (int or list): int represent the alpha for add-alpha smoothing, list
+        representing the lambdas for interpolation smoothing
+        model_type (str): Either 'ngram add alpha' or 'interpolation'
+        n (int): desired size of n_grams
+        training_data (text file): Text file to use as training data
+        valid_data (text file): Text file to use as validation or testing data
+
+    Returns:
+        (float): perplexity calculation for given model
+    """
+    model = None
+    if model_type == 'ngram add alpha':
+        model = ngram_model(training_data, n, param)
+    elif model_type == 'interpolation':
+        model = interpolation(training_data, n, param)
+
     p_log = 0
     n_gram_count = 0
-    for line in infile:
+    for line in valid_data:
         line = preprocess_line(line)
         for j in range(len(line) - (n-1)):
             n_gram = line[j:j + n]
             n_gram_count += 1
-            p_log += np.log2(n_gram_model[n_gram])
+            p_log += np.log2(model[n_gram])
     return 2 ** (-1 / n_gram_count * p_log)
 
 
@@ -160,6 +195,7 @@ def generate_text(model, n, length, br):
     init_outcomes = np.array(list(model.keys()))
     init_probs = np.array(list(model.values()))
     init_bins = np.cumsum(init_probs)
+    init_bins /= np.sum(init_probs)
     text = init_outcomes[np.digitize(np.random.sample(1), init_bins)][0]
     while len(text) < length:
         if text[-1] == '#':
@@ -169,9 +205,7 @@ def generate_text(model, n, length, br):
         outcomes = np.array(list(sub_dict.keys()))
         probs = np.array(list(sub_dict.values()))
         bins = np.cumsum(probs)
-        if not br:
-            if bins[-1] != 1:
-                bins[-1] = 1
+        bins /= np.sum(probs)
         sample = outcomes[np.digitize(np.random.random_sample(), bins)][-1]
         text += sample
 
@@ -192,11 +226,7 @@ data = open('training.en.txt').read().splitlines()
 data_train, data_valid = train_test_split(data, test_size=0.2, shuffle=True)
 data_valid, data_test = train_test_split(data_valid, test_size=0.5, shuffle=True)
 
-#trigram = ngram_model(data_train, 3, add_alpha=0.07)
-# generate_text(trigram, 3, 300, br=False)
 
-# print(perplexity(data_train, trigram, 3))
-# print(perplexity(data_valid, trigram, 3))
 # sub_dict = {key: value for key, value in trigram.items() if key.startswith('ng') }
 # write_to_file(sub_dict, 'ngdict.txt')
 
@@ -204,32 +234,31 @@ data_valid, data_test = train_test_split(data_valid, test_size=0.5, shuffle=True
 # print(perplexity(data_train, model_br, 3))
 # generate_text(model_br, 3, 300, br=True)
 
-# interpolation test
-def interpolation(lambdas):
+
+# test of optimization function to find alpha or lambdas parameters
+def testOptim():
+    model = 'interpolation'
     n = 3
-    ngram_array = [dict() for i in range(n)]
-    for i in range(n):
-        ngram_array[i] = ngram_model(data_train, i + 1)
-    #infile = open('training.en.txt').read().splitlines()
-    infile = data_valid
-    model = {}
-    p_log = 0
-    n_gram_count = 0
-    for line in infile:
-        line = preprocess_line(line)
-        for j in range(len(line) - (n)):
-            n_gram = line[j:j + n]
-            n_gram_count += 1
-            probability = 0
-            for i in range(n):
-                if n_gram[:i + 1] in ngram_array[i]:
-                    probability += lambdas[i] * ngram_array[i][n_gram[:i + 1]]
-            model[n_gram] = probability
-            p_log += np.log2(probability)
-    return 2**(-1/n_gram_count * p_log)
+    train = data_train
+    valid = data_valid
+    optim_args = (model, n, train, valid)
+    #optim = optimize.minimize(perplexity, 0.1, args=optim_args)
+    optim = optimize.minimize(perplexity,
+                              [0.5, 0.25, 0.25],
+                              args=optim_args,
+                              constraints=({'type': 'eq', 'fun': lambda x:  x[0] + x[1] + x[2] - 1}))
+    print(optim)
 
-# optim = optimize.minimize(interpolation, [0.5, 0.25, 0.25],
-#                           constraints=({'type': 'eq', 'fun': lambda x:  x[0] + x[1] + x[2] - 1}))
-# print(optim)
-# print(interpolation([1.79179297e-04, 2.52374153e-01, 7.47446668e-01]))
 
+model = interpolation(data_train, 3, [0.00270505, 0.27101636, 0.72627859])
+#print(perplexity([.05, .25, .7], 'interpolation', 3, data_train, data_valid))
+#model = ngram_model(data_train, 3, 0.07)
+write_to_file(model, 'interpolation.txt')
+
+# sub_dict = {key: value for key, value in model.items() if key.startswith('.')}
+# count = 0
+# for key, value in sub_dict.items():
+#     count += value
+# print(count)
+
+generate_text(model, 3, 300, False)
