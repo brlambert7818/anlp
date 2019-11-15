@@ -1,0 +1,40 @@
+# The start symbol is TOP.
+
+# These two rules are required; choose their weights carefully!
+99  TOP  S1
+1   TOP  S2
+
+1   S1   NP VP
+1   S1   NP _VP
+
+###### Nouns ######
+1   NP   Det Nbar
+1   NP   Proper
+1   NP   _Pronoun
+1   NP   _Conj NP
+
+1 _Pronoun Pronoun
+1 _Pronoun PronounPos Noun
+
+1 _Conj NP Conj
+
+1  Nbar Noun
+9  Nbar _AdjNoun
+1  Nbar Nbar _PP
+1  Nbar Num _NounPl
+
+1 _AdjNoun  Adj Noun
+1 _AdjNoun AdjComp Noun
+1 _AdjNoun AdjSup Noun
+
+1   _PP   Prep NP
+
+9 _NounPl NounPl
+1 _NounPl ProperPl
+
+###### Verbs ######
+1   _VP  VP Punc
+1   VP   VerbT NP
+
+# in case you use S1.gr by itself
+1   S2   Misc

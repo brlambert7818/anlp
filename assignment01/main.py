@@ -48,6 +48,7 @@ def write_to_file(model, file_name):
         None: creates file in current directory
     """
     with open(file_name, 'w') as f:
+        # sorts the dict keys alphabetically for more readable ouput
         dict_sorted = dict(sorted(model.items()))
         for key, value in dict_sorted.items():
             f.write(key + '    ' + str(value))
@@ -66,10 +67,10 @@ def generate_counts(infile, n):
         n_counts (dict): dictionary of counts for each n-character sequence
     """
     n_counts = {}
-    # with open(infile, 'r') as f:
-    # for line in f:
+    # taken from helper.py provided for assignment
     for line in infile:
         line = preprocess_line(line)
+        # must use (n-1) or else last n-gram of each line will be missed
         for j in range(len(line) - (n-1)):
             n_gram = line[j:j + n]
             if n_gram in n_counts:
@@ -77,15 +78,18 @@ def generate_counts(infile, n):
             else:
                 n_counts[n_gram] = 1
 
+    # generate all possible combinations of size n for a given vocabulary
+    # https://docs.python.org/2/library/itertools.html
     all_combos = product('abcdefghijklmnopqrstuvwxyz0. ', repeat=n)
+    # product(p, q) returns each combo as a list so each combo must be merged to one str
     if n == 1:
-        #all_combos = [a for a in all_combos]
         all_combos = list('abcdefghijklmnopqrstuvwxyz0. ')
     if n == 2:
         all_combos = [a + b for a, b in all_combos]
     if n == 3:
         all_combos = [a + b + c for a, b, c in all_combos]
 
+    # supplements n-grams seen in training set with all unseen n-grams generated above
     all_combo_dict = dict.fromkeys(all_combos, 0)
     all_combo_dict.update(n_counts)
     return all_combo_dict
@@ -146,10 +150,12 @@ def interpolation(data_train, n, lambdas):
     Returns:
         model (dict): all n-character sequences with estimated probabilities
     """
+    # create array of all n = 1, 2, ..., n-1, n length language models
     ngram_array = [dict() for i in range(n)]
     for i in range(n):
         ngram_array[i] = ngram_model(data_train, i + 1)
     model = {}
+    # probability for each trigram = lambda1*P(w3) + lambda2*P(w3|w2) + lambda3*P(w3|w1, w2)
     for key, value in ngram_array[-1].items():
         key_prob = 0
         for i in range(n):
@@ -173,12 +179,15 @@ def perplexity(param, model_type, n, training_data, valid_data):
     Returns:
         (float): perplexity calculation for given model
     """
+    # create desired language model
     model = None
     if model_type == 'ngram add alpha':
         model = ngram_model(training_data, n, param)
     elif model_type == 'interpolation':
         model = interpolation(training_data, n, param)
 
+    # calculate perplexity using equation Perplexity = 2**(cross entropy) where
+    # cross entropy = (-1/# n-grams) * log2(probability of the model)
     p_log = 0
     n_gram_count = 0
     for line in valid_data:
@@ -190,7 +199,10 @@ def perplexity(param, model_type, n, training_data, valid_data):
     return 2 ** (-1 / n_gram_count * p_log)
 
 
-def generate_text(model, n, length, br):
+def generate_text(model, n, length):
+    # sample from model to generate starting trigram for the sequence
+    # uses code supplied in lab 3 that cited https://stackoverflow.com/questions/11373192/
+    # generating-discrete-random-variables-with-specified-weights-using-scipy-or-numpy
     init_outcomes = np.array(list(model.keys()))
     init_probs = np.array(list(model.values()))
     init_bins = np.cumsum(init_probs)
@@ -225,9 +237,23 @@ data = open('training.en.txt').read().splitlines()
 data_train, data_valid = train_test_split(data, test_size=0.2, shuffle=True)
 data_valid, data_test = train_test_split(data_valid, test_size=0.5, shuffle=True)
 
+def ng(data, n, add_alpha):
+    """ Creates a txt file out trigram sequences that begin with 'ng' and their
+    respective probabilities
 
-# sub_dict = {key: value for key, value in trigram.items() if key.startswith('ng') }
-# write_to_file(sub_dict, 'ngdict.txt')
+    Args:
+        data (text file): Text file to use as training data
+        n (int): desired size of n_grams
+        add_alpha (float): optional function parameter to implement add-alpha smoothing.
+
+    Returns:
+
+
+    """
+    model = ngram_model(data, n, add_alpha)
+    sub_dict = {key: value for key, value in model.items() if key.startswith('ng')}
+    write_to_file(sub_dict, 'ngdict.txt')
+
 
 # model_br = input_model('model-br.en')
 # print(perplexity(data_train, model_br, 3))
@@ -236,7 +262,7 @@ data_valid, data_test = train_test_split(data_valid, test_size=0.5, shuffle=True
 
 def optimInterpolation():
     """ Find the optimal lambda parameters for interpolation trigram smoothing model
-
+    https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.minimize.html
     Returns:
         optim.x (ndarray): array of optimized lambda parameters
     """
@@ -245,16 +271,19 @@ def optimInterpolation():
     train = data_train
     valid = data_valid
     optim_args = (model, n, train, valid)
+    # the lambda parameters must sum to 1 so must constrain the minimize function
+    # https://stackoverflow.com/questions/20075714/scipy-minimize-with-constraints
+    cons = ({'type': 'eq', 'fun': lambda x:  x[0] + x[1] + x[2] - 1})
     optim = optimize.minimize(perplexity,
                               [0.05, 0.2, 0.75],
                               args=optim_args,
-                              constraints=({'type': 'eq', 'fun': lambda x:  x[0] + x[1] + x[2] - 1}))
+                              constraints=cons)
     return optim.x
 
 
 def optimAddAlpha():
     """ Find the optimal alpha parameter for add-alpha trigram smoothing model
-
+    https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.minimize.html
     Returns:
         optim.x (float):  optimized alpha parameter
     """
@@ -263,8 +292,11 @@ def optimAddAlpha():
     train = data_train
     valid = data_valid
     optim_args = (model, n, train, valid)
-    optim = optimize.minimize(perplexity, 0.07, args=optim_args)
+    bnds = ((0, 1),)
+    optim = optimize.minimize(perplexity, 0.07, bounds=bnds, args=optim_args)
     return float(optim.x)
+
+print(optimAddAlpha())
 
 #model = interpolation(data_train, 3, [0.00270505, 0.27101636, 0.72627859])
 #print(perplexity([.05, .25, .7], 'interpolation', 3, data_train, data_valid))
