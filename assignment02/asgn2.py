@@ -6,6 +6,7 @@ from nltk.stem.porter import *
 import matplotlib.pyplot as plt
 from scipy.stats import spearmanr
 import numpy as np
+from scipy.special import comb
 
 from load_map import *
 
@@ -34,7 +35,7 @@ def tw_stemmer(word):
         return STEMMER.stem(word)
 
 
-def pmi(c_xy, c_x, c_y, N):
+def pmi(c_xy, c_x, c_y, N = None):
     '''Compute the  pointwise mutual information using cooccurrence counts.
 
     :type c_xy: int
@@ -49,6 +50,23 @@ def pmi(c_xy, c_x, c_y, N):
     :return: the pmi value
     '''
     return np.log2(N*c_xy / (c_x*c_y))
+
+
+def pmi_smooth(c_xy, c_x, c_y, N):
+    '''Compute the  pointwise mutual information using cooccurrence counts.
+
+    :type c_xy: int
+    :type c_x: int
+    :type c_y: int
+    :type N: int
+    :param c_xy: coocurrence count of x and y
+    :param c_x: occurrence count of x
+    :param c_y: occurrence count of y
+    :param N: total observation count
+    :rtype: float
+    :return: the pmi value
+    '''
+    return np.log2((c_xy/N) / ((c_x/N)*c_y))
 
 
 #Do a simple error check using value computed by hand
@@ -129,21 +147,63 @@ def create_ppmi_vectors_smooth(wids, o_counts, co_counts, tot_count, alpha):
     :return: the context vectors, indexed by word id
     '''
     vectors = {}
-    sum_smooth = np.sum(np.array(list(o_counts.values())) ** alpha)
     for wid0 in wids:
         # count of target word
-        p_wid0 = o_counts[wid0] / tot_count
+        c_wid0 = o_counts[wid0]
+
         wid1_dict = {}
+        c_wid1s = []
+        wid1s = co_counts[wid0].keys()
+        for w in wid1s:
+            c_wid1s.append(o_counts[w])
+        # sum_smooth = np.sum(np.array(list(o_counts.values())) ** alpha)
+        sum_smooth = np.sum(np.array(c_wid1s)** alpha)
         for wid1 in co_counts[wid0]:
             if wid0 != wid1:
                 # count of context word
                 p_wid1 = o_counts[wid1]**alpha / sum_smooth
                 # co-occurence counts of target and context word
-                p_co_count = co_counts[wid0][wid1] / tot_count
-                pmi_temp = pmi(p_co_count, p_wid0, p_wid1, tot_count)
+                co_count = co_counts[wid0][wid1]
+                pmi_temp = pmi_smooth(co_count, c_wid0, p_wid1, tot_count)
                 # positive PMI with sparse vector representation
                 if pmi_temp > 0:
                     wid1_dict[wid1] = pmi_temp
+        vectors[wid0] = wid1_dict
+    return vectors
+
+def p_binom(k, n, x):
+    return x**k * ((1-x)**(n-k))
+
+def ted_dunning(wids, o_counts, co_counts, N):
+    N = 10000
+    vectors = {}
+    for wid0 in wids:
+        # count of target word
+        c_wid0 = o_counts[wid0]
+
+        wid1_dict = {}
+        for wid1 in co_counts[wid0]:
+            if wid0 != wid1:
+                # count of context word
+                c_wid1 = o_counts[wid1]
+                # co-occurence counts of target and context word
+                co_count = co_counts[wid0][wid1]
+                p = c_wid1 / N
+                p1 = co_count / c_wid0
+                p2 = (c_wid1 - co_count) / (N - c_wid0)
+
+                b1 = p_binom(co_count, c_wid0, p)
+                b2 = p_binom(c_wid1 - co_count, N - c_wid0, p)
+                b3 = p_binom(co_count, c_wid0, p1)
+                b4 = p_binom(c_wid1 - co_count, N - c_wid0, p2)
+
+                # wid_ll = np.log2((b1*b2) / (b3*b4))
+                wid_ll = np.log2(b1) + np.log2(b2) - np.log2(b3) - np.log2(b4)
+                print(wid0)
+                print(wid1)
+                print(wid_ll)
+                print('--------------')
+                wid1_dict[wid1] = wid_ll
         vectors[wid0] = wid1_dict
     return vectors
 
@@ -190,8 +250,8 @@ def print_sorted_pairs(similarities, o_counts, first=0, last=100):
     if first < 0: last = len(similarities)
     for pair in sorted(similarities.keys(), key=lambda x: similarities[x], reverse = True)[first:last]:
         word_pair = (wid2word[pair[0]], wid2word[pair[1]])
-        print("{:.2f}\t{:30}\t{}\t{}".format(similarities[pair],str(word_pair),
-                                         o_counts[pair[0]],o_counts[pair[1]]))
+        print("{:.2f}\t{:30}\t{}\t{}".format(similarities[pair], str(word_pair),
+                                         o_counts[pair[0]], o_counts[pair[1]]))
 
 def freq_v_sim(sims):
     xs = []
@@ -235,20 +295,22 @@ wid_pairs = make_pairs(all_wids)
 # (o_counts, co_counts, N) = read_counts("/afs/inf.ed.ac.uk/group/teaching/anlp/lab8/counts", all_wids)
 (o_counts, co_counts, N) = read_counts("/Users/brianlambert/Downloads/tweets_2011/counts", all_wids)
 
-#make the word vectors
-vectors = create_ppmi_vectors(all_wids, o_counts, co_counts, N)
+# #make the word vectors
+# vectors = create_ppmi_vectors(all_wids, o_counts, co_counts, N)
+#
+# # compute cosine similarites for all pairs we consider
+# c_sims = {(wid0,wid1): cos_sim(wid0, vectors[wid0], vectors[wid1]) for (wid0,wid1) in wid_pairs}
+# print("Sort by cosine similarity")
+# print_sorted_pairs(c_sims, o_counts)
+#
+# #make the word vectors
+# print("=====================================================")
+# vectors = create_ppmi_vectors_smooth(all_wids, o_counts, co_counts, N, 2)
+#
+# # compute cosine similarites for all pairs we consider
+# c_sims = {(wid0,wid1): cos_sim(wid0, vectors[wid0], vectors[wid1]) for (wid0,wid1) in wid_pairs}
+#
+# print("Sort by cosine similarity")
+# print_sorted_pairs(c_sims, o_counts)
 
-# compute cosine similarites for all pairs we consider
-c_sims = {(wid0,wid1): cos_sim(wid0, vectors[wid0], vectors[wid1]) for (wid0,wid1) in wid_pairs}
-print("Sort by cosine similarity")
-print_sorted_pairs(c_sims, o_counts)
-print(vectors[wid0])
-
-#make the word vectors
-print("=====================================================")
-vectors = create_ppmi_vectors_smooth(all_wids, o_counts, co_counts, N, 0.75)
-
-# compute cosine similarites for all pairs we consider
-c_sims = {(wid0,wid1): cos_sim(wid0, vectors[wid0], vectors[wid1]) for (wid0,wid1) in wid_pairs}
-print("Sort by cosine similarity")
-print_sorted_pairs(c_sims, o_counts)
+vectors = ted_dunning(all_wids, o_counts, co_counts, N)
