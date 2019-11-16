@@ -12,8 +12,8 @@ from load_map import *
 STEMMER = PorterStemmer()
 
 
-# helper function to get the count of a word (string)
 def w_count(word):
+    # helper function to get the count of a word (string)
     return o_counts[word2wid[word]]
 
 
@@ -34,7 +34,7 @@ def tw_stemmer(word):
         return STEMMER.stem(word)
 
 
-def PMI(c_xy, c_x, c_y, N):
+def pmi(c_xy, c_x, c_y, N):
     '''Compute the  pointwise mutual information using cooccurrence counts.
 
     :type c_xy: int
@@ -48,10 +48,11 @@ def PMI(c_xy, c_x, c_y, N):
     :rtype: float
     :return: the pmi value
     '''
-    return np.log2(N*c_xy / c_x*c_y)
+    return np.log2(N*c_xy / (c_x*c_y))
+
 
 #Do a simple error check using value computed by hand
-if PMI(2,4,3,12) != 1: # these numbers are from our y,z example
+if pmi(2,4,3,12) != 1: # these numbers are from our y,z example
     print("Warning: PMI is incorrectly defined")
 else:
     print("PMI check passed")
@@ -90,9 +91,16 @@ def create_ppmi_vectors(wids, o_counts, co_counts, tot_count):
     '''
     vectors = {}
     for wid0 in wids:
-        ##you will need to change this
-        vectors[wid0] = {}
-    print("Warning: create_ppmi_vectors is incorrectly defined")
+        c_wid0 = o_counts[wid0]
+        wid1_dict = {}
+        for wid1 in wids:
+            if wid0 != wid1:
+                c_wid1 = o_counts[wid1]
+                co_count = co_counts[wid0][wid1]
+                pmi_temp = pmi(co_count, c_wid0, c_wid1, tot_count)
+                if pmi_temp > 0:
+                    wid1_dict[wid1] = pmi_temp
+        vectors[wid0] = wid1_dict
     return vectors
 
 
@@ -185,9 +193,9 @@ wid_pairs = make_pairs(all_wids)
 
 #make the word vectors
 vectors = create_ppmi_vectors(all_wids, o_counts, co_counts, N)
+print(vectors[8].values())
 
 # compute cosine similarites for all pairs we consider
-c_sims = {(wid0,wid1): cos_sim(vectors[wid0],vectors[wid1]) for (wid0,wid1) in wid_pairs}
-
+c_sims = {(wid0,wid1): cos_sim(np.array(list(vectors[wid0].values())), np.array(list(vectors[wid1].values()))) for (wid0,wid1) in wid_pairs}
 print("Sort by cosine similarity")
 print_sorted_pairs(c_sims, o_counts)
