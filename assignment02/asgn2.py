@@ -58,7 +58,7 @@ else:
     print("PMI check passed")
 
 
-def cos_sim(v0, v1):
+def cos_sim(wid0, v0, v1):
     '''Compute the cosine similarity between two sparse vectors.
 
     :type v0: dict
@@ -71,7 +71,12 @@ def cos_sim(v0, v1):
     # We recommend that you store the sparse vectors as dictionaries
     # with keys giving the indices of the non-zero entries, and values
     # giving the values at those dimensions.
-    return np.dot(v0, v1) / np.linalg.norm(v0)*np.linalg.norm(v1)
+    dot_prod = 0
+    for k, v in v0.items():
+        if k in v1.keys():
+            dot_prod += v*v1[k]
+    norms = np.linalg.norm(list(v0.values())) * np.linalg.norm(list(v1.values()))
+    return 0 if norms == 0 else dot_prod / norms
 
 
 def create_ppmi_vectors(wids, o_counts, co_counts, tot_count):
@@ -93,7 +98,7 @@ def create_ppmi_vectors(wids, o_counts, co_counts, tot_count):
     for wid0 in wids:
         c_wid0 = o_counts[wid0]
         wid1_dict = {}
-        for wid1 in wids:
+        for wid1 in co_counts[wid0]:
             if wid0 != wid1:
                 c_wid1 = o_counts[wid1]
                 co_count = co_counts[wid0][wid1]
@@ -193,9 +198,8 @@ wid_pairs = make_pairs(all_wids)
 
 #make the word vectors
 vectors = create_ppmi_vectors(all_wids, o_counts, co_counts, N)
-print(vectors[8].values())
 
 # compute cosine similarites for all pairs we consider
-c_sims = {(wid0,wid1): cos_sim(np.array(list(vectors[wid0].values())), np.array(list(vectors[wid1].values()))) for (wid0,wid1) in wid_pairs}
+c_sims = {(wid0,wid1): cos_sim(wid0, vectors[wid0], vectors[wid1]) for (wid0,wid1) in wid_pairs}
 print("Sort by cosine similarity")
 print_sorted_pairs(c_sims, o_counts)
