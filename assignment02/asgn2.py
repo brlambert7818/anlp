@@ -79,7 +79,7 @@ def cos_sim(wid0, v0, v1):
     return 0 if norms == 0 else dot_prod / norms
 
 
-def create_ppmi_vectors(wids, o_counts, co_counts, tot_count):
+def create_ppmi_vectors(wids, o_counts, co_counts, tot_count, alpha = None):
     '''Creates context vectors for the words in wids, using PPMI.
     These should be sparse vectors.
 
@@ -96,13 +96,52 @@ def create_ppmi_vectors(wids, o_counts, co_counts, tot_count):
     '''
     vectors = {}
     for wid0 in wids:
+        # count of target word
         c_wid0 = o_counts[wid0]
         wid1_dict = {}
         for wid1 in co_counts[wid0]:
             if wid0 != wid1:
+                # count of context word
                 c_wid1 = o_counts[wid1]
+                # co-occurence counts of target and context word
                 co_count = co_counts[wid0][wid1]
                 pmi_temp = pmi(co_count, c_wid0, c_wid1, tot_count)
+                # positive PMI with sparse vector representation
+                if pmi_temp > 0:
+                    wid1_dict[wid1] = pmi_temp
+        vectors[wid0] = wid1_dict
+    return vectors
+
+
+def create_ppmi_vectors_smooth(wids, o_counts, co_counts, tot_count, alpha):
+    '''Creates context vectors for the words in wids, using PPMI.
+    These should be sparse vectors.
+
+    :type wids: list of int
+    :type o_counts: dict
+    :type co_counts: dict of dict
+    :type tot_count: int
+    :param wids: the ids of the words to make vectors for
+    :param o_counts: the counts of each word (indexed by id)
+    :param co_counts: the cooccurrence counts of each word pair (indexed by ids)
+    :param tot_count: the total number of observations
+    :rtype: dict
+    :return: the context vectors, indexed by word id
+    '''
+    vectors = {}
+    sum_smooth = np.sum(np.array(list(o_counts.values())) ** alpha)
+    for wid0 in wids:
+        # count of target word
+        p_wid0 = o_counts[wid0] / tot_count
+        wid1_dict = {}
+        for wid1 in co_counts[wid0]:
+            if wid0 != wid1:
+                # count of context word
+                p_wid1 = o_counts[wid1]**alpha / sum_smooth
+                # co-occurence counts of target and context word
+                p_co_count = co_counts[wid0][wid1] / tot_count
+                pmi_temp = pmi(p_co_count, p_wid0, p_wid1, tot_count)
+                # positive PMI with sparse vector representation
                 if pmi_temp > 0:
                     wid1_dict[wid1] = pmi_temp
         vectors[wid0] = wid1_dict
@@ -198,6 +237,16 @@ wid_pairs = make_pairs(all_wids)
 
 #make the word vectors
 vectors = create_ppmi_vectors(all_wids, o_counts, co_counts, N)
+
+# compute cosine similarites for all pairs we consider
+c_sims = {(wid0,wid1): cos_sim(wid0, vectors[wid0], vectors[wid1]) for (wid0,wid1) in wid_pairs}
+print("Sort by cosine similarity")
+print_sorted_pairs(c_sims, o_counts)
+print(vectors[wid0])
+
+#make the word vectors
+print("=====================================================")
+vectors = create_ppmi_vectors_smooth(all_wids, o_counts, co_counts, N, 0.75)
 
 # compute cosine similarites for all pairs we consider
 c_sims = {(wid0,wid1): cos_sim(wid0, vectors[wid0], vectors[wid1]) for (wid0,wid1) in wid_pairs}
