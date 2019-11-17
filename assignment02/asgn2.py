@@ -78,7 +78,7 @@ else:
     print("PMI check passed")
 
 
-def cos_sim(wid0, v0, v1):
+def cos_sim(v0, v1):
     '''Compute the cosine similarity between two sparse vectors.
 
     :type v0: dict
@@ -188,7 +188,7 @@ def ted_dunning(wids, o_counts, co_counts, N):
         for w in wid1s:
             c_wid1s.append(o_counts[w])
         wid1_dict = {}
-        for wid1 in co_counts[wid0]:
+        for wid1 in [8, 999, 140, 77, 926]:
             if wid0 != wid1:
                 # N = np.sum(c_wid1s)
                 # count of context word
@@ -205,10 +205,6 @@ def ted_dunning(wids, o_counts, co_counts, N):
                 b4 = p_binom(c_wid1 - co_count, N - c_wid0, p2)
 
                 wid_ll = -b1 - b2 + b3 + b4
-                print(wid0)
-                print(wid1)
-                print(wid_ll)
-                print('--------------')
                 wid1_dict[wid1] = wid_ll
         vectors[wid0] = wid1_dict
     return vectors
@@ -295,27 +291,37 @@ all_wids = set([word2wid[x] for x in stemmed_words]) #stemming might create dupl
 # you could choose to just select some pairs and add them by hand instead
 # but here we automatically create all pairs 
 wid_pairs = make_pairs(all_wids)
-
-
-#read in the count information (same as in lab)
 # (o_counts, co_counts, N) = read_counts("/afs/inf.ed.ac.uk/group/teaching/anlp/lab8/counts", all_wids)
 (o_counts, co_counts, N) = read_counts("/Users/brianlambert/Downloads/tweets_2011/counts", all_wids)
 
 # PMI
-vectors = create_ppmi_vectors(all_wids, o_counts, co_counts, N)
-c_sims = {(wid0,wid1): cos_sim(wid0, vectors[wid0], vectors[wid1]) for (wid0,wid1) in wid_pairs}
-print("Sort by cosine similarity")
-print_sorted_pairs(c_sims, o_counts)
-print("=====================================================")
+# vectors = create_ppmi_vectors(all_wids, o_counts, co_counts, N)
+# c_sims = {(wid0,wid1):  cos_sim(vectors[wid0], vectors[wid1]) for (wid0,wid1) in wid_pairs}
+# print("Sort by cosine similarity")
+# print_sorted_pairs(c_sims, o_counts)
+# print("=====================================================")
 
 # PMI smoothed
-vectors = create_ppmi_vectors_smooth(all_wids, o_counts, co_counts, N, 2)
-c_sims = {(wid0,wid1): cos_sim(wid0, vectors[wid0], vectors[wid1]) for (wid0,wid1) in wid_pairs}
-print("Sort by cosine similarity")
-print_sorted_pairs(c_sims, o_counts)
+# vectors = create_ppmi_vectors_smooth(all_wids, o_counts, co_counts, N, 2)
+# c_sims = {(wid0,wid1): cos_sim(wid0, vectors[wid0], vectors[wid1]) for (wid0,wid1) in wid_pairs}
+# print("Sort by cosine similarity")
+# print_sorted_pairs(c_sims, o_counts)
 
 # Dunning G2
-vectors = ted_dunning(all_wids, o_counts, co_counts, N)
-c_sims = {(wid0,wid1): vectors[wid0][wid1] for (wid0,wid1) in wid_pairs}
-print("Sort by cosine similarity")
-print_sorted_pairs(c_sims, o_counts)
+# vectors = ted_dunning(all_wids, o_counts, co_counts, N)
+# c_sims = {(wid0,wid1): vectors[wid0][wid1] for (wid0,wid1) in wid_pairs}
+# print("Sort by cosine similarity")
+# print_sorted_pairs(c_sims, o_counts)
+
+###################### DATA AGGREGATION #########################
+
+def get_co_counts(co_counts, count):
+    for k1,v1 in co_counts.items():
+        for k2, v2 in v1.items():
+            temp_item = co_counts[k1][k2]
+            if temp_item != count:
+                del temp_item
+    return co_counts
+
+co_counts200 = get_co_counts(co_counts, 200)
+
