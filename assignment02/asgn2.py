@@ -6,9 +6,8 @@ from nltk.stem.porter import *
 import matplotlib.pyplot as plt
 from scipy.stats import spearmanr
 import numpy as np
-from scipy.special import comb
-from sklearn.metrics import log_loss
-from scipy.stats import chi2
+import json
+import collections
 
 from load_map import *
 
@@ -291,8 +290,9 @@ all_wids = set([word2wid[x] for x in stemmed_words]) #stemming might create dupl
 # you could choose to just select some pairs and add them by hand instead
 # but here we automatically create all pairs 
 wid_pairs = make_pairs(all_wids)
+
 # (o_counts, co_counts, N) = read_counts("/afs/inf.ed.ac.uk/group/teaching/anlp/lab8/counts", all_wids)
-(o_counts, co_counts, N) = read_counts("/Users/brianlambert/Downloads/tweets_2011/counts", all_wids)
+(o_counts, co_counts, N) = read_counts("/Users/brianlambert/Desktop/tweets_2011/counts", all_wids)
 
 # PMI
 # vectors = create_ppmi_vectors(all_wids, o_counts, co_counts, N)
@@ -315,13 +315,67 @@ wid_pairs = make_pairs(all_wids)
 
 ###################### DATA AGGREGATION #########################
 
-def get_co_counts(co_counts, count):
-    for k1,v1 in co_counts.items():
-        for k2, v2 in v1.items():
-            temp_item = co_counts[k1][k2]
-            if temp_item != count:
-                del temp_item
-    return co_counts
 
-co_counts200 = get_co_counts(co_counts, 200)
+def get_co_counts(count):
+    all_wids = wid2word.keys()
+    (o_counts, co_counts, N) = read_counts("/Users/brianlambert/Desktop/tweets_2011/counts", all_wids)
+
+    d = {}
+    for k1, v1 in co_counts.items():
+        d_inner = {}
+        for k2, v2 in v1.items():
+            if v2 == count:
+                d_inner[k2] = v2
+        if len(d_inner.keys()) > 0:
+            d[k1] = d_inner
+
+    import json
+    json = json.dumps(d)
+    f = open("co_counts_" + str(count) + ".json", "w")
+    f.write(json)
+    f.close()
+    return d
+
+
+def get_counts():
+    # co_counts200 = get_co_counts(200)
+    with open('co_counts_200.json') as json_file:
+        co_counts = json.load(json_file)
+
+    o_counts_200 = {}
+    for k in co_counts.keys():
+        o_counts_200[int(k)] = o_counts[int(k)]
+    return o_counts_200, co_counts
+
+
+def get_sorted_c(unsorted_dict):
+
+    sorted_x = sorted(unsorted_dict.items(), key=lambda kv: kv[1])
+    sorted_dict = collections.OrderedDict(sorted_x)
+    # for k,v in sorted_dict.items():
+    #     print(wid2word[k] + ': ' + str(v))
+    return sorted_dict
+
+
+def get_co_range(upper, lower):
+    counts, co_counts = get_counts()
+    temp_counts = {}
+    for k,v in counts.items():
+        if counts[k] >= lower and counts[k] <= upper:
+            temp_counts[k] = v
+
+    co_occurs = {}
+    for k1, v1 in temp_counts.items():
+        w1s = []
+        for k2, v2 in temp_counts.items():
+            if k1 != k2:
+                if k2 in co_counts[k1].keys():
+                    w1s.append(k2)
+        co_occurs[k1] = w1s
+    return co_occurs
+
+x = get_co_range(200, 2000)
+print(x.keys())
+
+
 
