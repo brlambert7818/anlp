@@ -7,6 +7,8 @@ import matplotlib.pyplot as plt
 from scipy.stats import spearmanr
 import numpy as np
 from scipy.special import comb
+from sklearn.metrics import log_loss
+from scipy.stats import chi2
 
 from load_map import *
 
@@ -172,18 +174,23 @@ def create_ppmi_vectors_smooth(wids, o_counts, co_counts, tot_count, alpha):
     return vectors
 
 def p_binom(k, n, x):
-    return x**k * ((1-x)**(n-k))
+    # return x**k * ((1-x)**(n-k))
+    return k*np.log(x) + (n-k)*np.log(1-x)
 
 def ted_dunning(wids, o_counts, co_counts, N):
-    N = 10000
     vectors = {}
     for wid0 in wids:
         # count of target word
         c_wid0 = o_counts[wid0]
 
+        c_wid1s = []
+        wid1s = co_counts[wid0].keys()
+        for w in wid1s:
+            c_wid1s.append(o_counts[w])
         wid1_dict = {}
         for wid1 in co_counts[wid0]:
             if wid0 != wid1:
+                # N = np.sum(c_wid1s)
                 # count of context word
                 c_wid1 = o_counts[wid1]
                 # co-occurence counts of target and context word
@@ -197,8 +204,7 @@ def ted_dunning(wids, o_counts, co_counts, N):
                 b3 = p_binom(co_count, c_wid0, p1)
                 b4 = p_binom(c_wid1 - co_count, N - c_wid0, p2)
 
-                # wid_ll = np.log2((b1*b2) / (b3*b4))
-                wid_ll = np.log2(b1) + np.log2(b2) - np.log2(b3) - np.log2(b4)
+                wid_ll = -b1 - b2 + b3 + b4
                 print(wid0)
                 print(wid1)
                 print(wid_ll)
@@ -295,22 +301,21 @@ wid_pairs = make_pairs(all_wids)
 # (o_counts, co_counts, N) = read_counts("/afs/inf.ed.ac.uk/group/teaching/anlp/lab8/counts", all_wids)
 (o_counts, co_counts, N) = read_counts("/Users/brianlambert/Downloads/tweets_2011/counts", all_wids)
 
-# #make the word vectors
-# vectors = create_ppmi_vectors(all_wids, o_counts, co_counts, N)
-#
-# # compute cosine similarites for all pairs we consider
-# c_sims = {(wid0,wid1): cos_sim(wid0, vectors[wid0], vectors[wid1]) for (wid0,wid1) in wid_pairs}
-# print("Sort by cosine similarity")
-# print_sorted_pairs(c_sims, o_counts)
-#
-# #make the word vectors
-# print("=====================================================")
-# vectors = create_ppmi_vectors_smooth(all_wids, o_counts, co_counts, N, 2)
-#
-# # compute cosine similarites for all pairs we consider
-# c_sims = {(wid0,wid1): cos_sim(wid0, vectors[wid0], vectors[wid1]) for (wid0,wid1) in wid_pairs}
-#
-# print("Sort by cosine similarity")
-# print_sorted_pairs(c_sims, o_counts)
+# PMI
+vectors = create_ppmi_vectors(all_wids, o_counts, co_counts, N)
+c_sims = {(wid0,wid1): cos_sim(wid0, vectors[wid0], vectors[wid1]) for (wid0,wid1) in wid_pairs}
+print("Sort by cosine similarity")
+print_sorted_pairs(c_sims, o_counts)
+print("=====================================================")
 
+# PMI smoothed
+vectors = create_ppmi_vectors_smooth(all_wids, o_counts, co_counts, N, 2)
+c_sims = {(wid0,wid1): cos_sim(wid0, vectors[wid0], vectors[wid1]) for (wid0,wid1) in wid_pairs}
+print("Sort by cosine similarity")
+print_sorted_pairs(c_sims, o_counts)
+
+# Dunning G2
 vectors = ted_dunning(all_wids, o_counts, co_counts, N)
+c_sims = {(wid0,wid1): vectors[wid0][wid1] for (wid0,wid1) in wid_pairs}
+print("Sort by cosine similarity")
+print_sorted_pairs(c_sims, o_counts)
