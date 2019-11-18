@@ -172,9 +172,11 @@ def create_ppmi_vectors_smooth(wids, o_counts, co_counts, tot_count, alpha):
         vectors[wid0] = wid1_dict
     return vectors
 
+def log2fac(k):
+    return log((2*np.pi*k)**(.5),2) + k*log(k/np.exp(1), 2)
+
 def p_binom(k, n, x):
-    # return x**k * ((1-x)**(n-k))
-    return k*np.log(x) + (n-k)*np.log(1-x)
+    return k*log(x) + (n-k)*log(1-x) + log2fac(n) - log2fac(n-k) - log2fac(k)
 
 def ted_dunning(wids, o_counts, co_counts, N):
     vectors = {}
@@ -194,7 +196,7 @@ def ted_dunning(wids, o_counts, co_counts, N):
                 c_wid1 = o_counts[wid1]
                 # co-occurence counts of target and context word
                 co_count = co_counts[wid0][wid1]
-                p = c_wid1 / N
+                p = c_wid0 / N
                 p1 = co_count / c_wid0
                 p2 = (c_wid1 - co_count) / (N - c_wid0)
 
@@ -203,7 +205,8 @@ def ted_dunning(wids, o_counts, co_counts, N):
                 b3 = p_binom(co_count, c_wid0, p1)
                 b4 = p_binom(c_wid1 - co_count, N - c_wid0, p2)
 
-                wid_ll = -b1 - b2 + b3 + b4
+                # wid_ll = 2*(-b1 - b2 + b3 + b4)
+                wid_ll = 2*(-b1 - b2 + b3 + b4)
                 wid1_dict[wid1] = wid_ll
         vectors[wid0] = wid1_dict
     return vectors
@@ -284,6 +287,7 @@ def make_pairs(items):
 
 
 test_words = ["cat", "dog", "mouse", "computer","@justinbieber"]
+# test_words = ["cat", "dog"]
 stemmed_words = [tw_stemmer(w) for w in test_words]
 all_wids = set([word2wid[x] for x in stemmed_words]) #stemming might create duplicates; remove them
 
@@ -303,15 +307,16 @@ wid_pairs = make_pairs(all_wids)
 
 # PMI smoothed
 # vectors = create_ppmi_vectors_smooth(all_wids, o_counts, co_counts, N, 2)
-# c_sims = {(wid0,wid1): cos_sim(wid0, vectors[wid0], vectors[wid1]) for (wid0,wid1) in wid_pairs}
+# c_sims = {(wid0,wid1): cos_sim(vectors[wid0], vectors[wid1]) for (wid0,wid1) in wid_pairs}
 # print("Sort by cosine similarity")
 # print_sorted_pairs(c_sims, o_counts)
 
 # Dunning G2
-# vectors = ted_dunning(all_wids, o_counts, co_counts, N)
+vectors = ted_dunning(all_wids, o_counts, co_counts, N)
 # c_sims = {(wid0,wid1): vectors[wid0][wid1] for (wid0,wid1) in wid_pairs}
-# print("Sort by cosine similarity")
-# print_sorted_pairs(c_sims, o_counts)
+c_sims = {(wid0,wid1): cos_sim(vectors[wid0], vectors[wid1]) for (wid0,wid1) in wid_pairs}
+print("Sort by cosine similarity")
+print_sorted_pairs(c_sims, o_counts)
 
 ###################### DATA AGGREGATION #########################
 
@@ -357,25 +362,42 @@ def get_sorted_c(unsorted_dict):
     return sorted_dict
 
 
-def get_co_range(upper, lower):
+def get_co_range(lower, upper):
     counts, co_counts = get_counts()
     temp_counts = {}
     for k,v in counts.items():
-        if counts[k] >= lower and counts[k] <= upper:
+        if lower <= counts[k] <= upper:
             temp_counts[k] = v
+    # print(co_counts['1196'].keys())
 
     co_occurs = {}
     for k1, v1 in temp_counts.items():
         w1s = []
+        # print(co_counts[str(k1)].keys())
         for k2, v2 in temp_counts.items():
             if k1 != k2:
-                if k2 in co_counts[k1].keys():
+                if str(k2) in co_counts[str(k1)].keys():
                     w1s.append(k2)
-        co_occurs[k1] = w1s
+        if len(w1s) > 0:
+            co_occurs[k1] = w1s
     return co_occurs
 
-x = get_co_range(200, 2000)
-print(x.keys())
-
-
+# x1 = get_co_range(200, 1200)
+# x2 = get_co_range(10000, 50000)
+# x3 = get_co_range(1000000, 6000000)
+# x1_sort = get_sorted_c(x1)
+# x2_sort = get_sorted_c(x2)
+# x3_sort = get_sorted_c(x3)
+# x1 = len(x1_sort.keys())/2
+# x2 = len(x2_sort.keys())/2
+# x3 = len(x3_sort.keys())/2
+# print(x1)
+#
+# plt.bar(['a','b','c'], [x1, x2, x3])
+# plt.show()
+#
+# for k,v in x1_sort.items():
+#     for i in v:
+#         print(o_counts[i])
+#     print('________________')
 
