@@ -104,7 +104,7 @@ def cos_sim(v0, v1):
     return 0 if norms == 0 else dot_prod / norms
 
 
-def create_ppmi_vectors(wids, o_counts_in, co_counts_in, tot_count):
+def create_ppmi_vectors(wids, o_counts_in, co_counts_in, tot_count, simtable):
     '''Creates context vectors for the words in wids, using PPMI.
     These should be sparse vectors.
 
@@ -132,13 +132,16 @@ def create_ppmi_vectors(wids, o_counts_in, co_counts_in, tot_count):
                 co_count = co_counts_in[wid0][wid1]
                 pmi_temp = pmi(co_count, c_wid0, c_wid1, tot_count)
                 # positive PMI with sparse vector representation
-                if pmi_temp > 0:
+                if simtable:
                     wid1_dict[wid1] = pmi_temp
+                else:
+                    if pmi_temp > 0:
+                        wid1_dict[wid1] = pmi_temp
         vectors[wid0] = wid1_dict
     return vectors
 
 
-def create_ppmi_vectors_smooth(wids, o_counts_in, co_counts_in, tot_count, alpha):
+def create_ppmi_vectors_smooth(wids, o_counts_in, co_counts_in, tot_count, alpha, simtable):
     '''Creates context vectors for the words in wids, using PPMI.
     These should be sparse vectors.
 
@@ -174,8 +177,11 @@ def create_ppmi_vectors_smooth(wids, o_counts_in, co_counts_in, tot_count, alpha
                 co_count = co_counts_in[wid0][wid1]
                 pmi_temp = pmi_smooth(co_count, c_wid0, c_wid1, smooth_counts, tot_count, 0.75)
                 # positive PMI with sparse vector representation
-                if pmi_temp > 0:
+                if simtable:
                     wid1_dict[wid1] = pmi_temp
+                else:
+                    if pmi_temp > 0:
+                        wid1_dict[wid1] = pmi_temp
         vectors[wid0] = wid1_dict
     return vectors
 
@@ -210,7 +216,7 @@ def g2_ratio(wids, o_counts_in, co_counts_in, tot_count):
                 b3 = p_binom(p1, c_wid0, tot_count)
                 b4 = p_binom(p2, c_wid1, tot_count)
 
-                wid_ll = (b3 + b4 - b1 - b2)
+                wid_ll = 2*(b3 + b4 - b1 - b2)
                 wid1_dict[wid1] = wid_ll
         vectors[wid0] = wid1_dict
     return vectors
@@ -301,25 +307,25 @@ wid_pairs = make_pairs(all_wids)
 (o_counts, co_counts, N) = read_counts("/Users/brianlambert/tweets_2011/counts", all_wids)
 
 ##PMI
-#vectors = create_ppmi_vectors(all_wids, o_counts, co_counts, N)
-#c_sims = {(wid0,wid1):  cos_sim(vectors[wid0], vectors[wid1]) for (wid0,wid1) in wid_pairs}
-#print("Sort by cosine similarity")
-#print_sorted_pairs(c_sims, o_counts)
-#print("=====================================================")
-#
-## PMI smoothed
-#vectors = create_ppmi_vectors_smooth(all_wids, o_counts, co_counts, N, 2)
-#c_sims = {(wid0,wid1): cos_sim(vectors[wid0], vectors[wid1]) for (wid0,wid1) in wid_pairs}
-#print("Sort by cosine similarity")
-#print_sorted_pairs(c_sims, o_counts)
-#print("=====================================================")
-#
-## Dunning G2
-#vectors = g2_ratio(all_wids, o_counts, co_counts, N)
+vectors = create_ppmi_vectors(all_wids, o_counts, co_counts, N, False)
+c_sims = {(wid0,wid1):  cos_sim(vectors[wid0], vectors[wid1]) for (wid0,wid1) in wid_pairs}
+print("Sort by cosine similarity")
+print_sorted_pairs(c_sims, o_counts)
+print("=====================================================")
+
+# PMI smoothed
+vectors = create_ppmi_vectors_smooth(all_wids, o_counts, co_counts, N, 2, False)
+c_sims = {(wid0,wid1): cos_sim(vectors[wid0], vectors[wid1]) for (wid0,wid1) in wid_pairs}
+print("Sort by cosine similarity")
+print_sorted_pairs(c_sims, o_counts)
+print("=====================================================")
+
+# Dunning G2
+vectors = g2_ratio(all_wids, o_counts, co_counts, N)
 #c_sims = {(wid0,wid1): vectors[wid0][wid1] for (wid0,wid1) in wid_pairs}
-##c_sims = {(wid0,wid1): cos_sim(vectors[wid0], vectors[wid1]) for (wid0,wid1) in wid_pairs}
-#print("Sort by cosine similarity")
-#print_sorted_pairs(c_sims, o_counts)
+c_sims = {(wid0,wid1): cos_sim(vectors[wid0], vectors[wid1]) for (wid0,wid1) in wid_pairs}
+print("Sort by cosine similarity")
+print_sorted_pairs(c_sims, o_counts)
 
 
 ###################### DATA AGGREGATION #########################
@@ -401,9 +407,9 @@ def get_similarity(sim_fn, o_counts_filter, co_counts_filter, N, all_wids, wid_p
     if sim_fn == 'g2':
         vectors = g2_ratio(all_wids, o_counts_filter, co_counts_filter, N)
     elif sim_fn == 'pmi':
-        vectors = create_ppmi_vectors(all_wids, o_counts_filter, co_counts_filter, N)
+        vectors = create_ppmi_vectors(all_wids, o_counts_filter, co_counts_filter, N, True)
     elif sim_fn == 'pmi_smooth':
-        vectors = create_ppmi_vectors_smooth(all_wids, o_counts_filter, co_counts_filter, N, 2)
+        vectors = create_ppmi_vectors_smooth(all_wids, o_counts_filter, co_counts_filter, N, 2, True)
     else:
         raise Exception('Invalid similarity measure')
 
@@ -412,8 +418,6 @@ def get_similarity(sim_fn, o_counts_filter, co_counts_filter, N, all_wids, wid_p
     for pair in wid_pairs:
         wid0 = pair[0]
         wid1 = pair[1]
-        print(wid0)
-        print(wid1)
 
         sims[i, 0] = vectors[wid0][wid1]
         sims[i, 1] = o_counts_filter[wid0]
@@ -475,7 +479,7 @@ test_pairs3 =    [(word2wid['spend'], word2wid['death']),
                  (word2wid['fake'], word2wid['app']), 
                  (word2wid['download'], word2wid['wonder']), 
                  (word2wid['#oomf'], word2wid['fast'])]                                   
-             
+      
 sim_pmi3 = get_similarity('pmi', o_counts_filter, co_counts_filter, N, all_test_wids3, test_pairs3)
 sim_pmi_smooth3 = get_similarity('pmi_smooth', o_counts, co_counts_filter, N, all_test_wids3, test_pairs3)
 sim_g23 = get_similarity('g2', o_counts_filter, co_counts_filter, N, all_test_wids3, test_pairs3)
