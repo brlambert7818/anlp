@@ -35,7 +35,7 @@ def tw_stemmer(word):
         return STEMMER.stem(word)
 
 
-def pmi(c_xy, c_x, c_y, N = None):
+def pmi(c_xy, c_x, c_y, tot_count):
     '''Compute the  pointwise mutual information using cooccurrence counts.
 
     :type c_xy: int
@@ -49,10 +49,11 @@ def pmi(c_xy, c_x, c_y, N = None):
     :rtype: float
     :return: the pmi value
     '''
-    return np.log2(N*c_xy / (c_x*c_y))
+#    return np.log2(tot_count*c_xy / (c_x*c_y))
+    return np.log2(tot_count) + np.log2(c_xy) - np.log2(c_x) - np.log2(c_y)
 
 
-def pmi_smooth(c_xy, c_x, c_y, N, alpha):
+def pmi_smooth(c_xy, c_x, c_y, smooth_counts, tot_count, alpha):
     '''Compute the  pointwise mutual information using cooccurrence counts.
 
     :type c_xy: int
@@ -65,10 +66,11 @@ def pmi_smooth(c_xy, c_x, c_y, N, alpha):
     :param N: total observation count
     :rtype: float
     :return: the pmi value
-    '''
-    p_xy = (c_xy/N)**alpha
-    p_x = (c_x/N)**alpha
-    p_y = (c_y/N)**alpha
+    '''     
+    p_xy = c_xy/tot_count
+    p_x = c_x/tot_count
+    p_y = (c_y**alpha) / smooth_counts
+    
 #    return np.log2((c_xy/N) / ((c_x/N)*c_y))
     return np.log2(p_xy) - np.log2(p_x) - np.log2(p_y)
 
@@ -102,7 +104,7 @@ def cos_sim(v0, v1):
     return 0 if norms == 0 else dot_prod / norms
 
 
-def create_ppmi_vectors(wids, o_counts_in, co_counts_in, tot_count, alpha = None):
+def create_ppmi_vectors(wids, o_counts_in, co_counts_in, tot_count):
     '''Creates context vectors for the words in wids, using PPMI.
     These should be sparse vectors.
 
@@ -151,26 +153,26 @@ def create_ppmi_vectors_smooth(wids, o_counts_in, co_counts_in, tot_count, alpha
     :rtype: dict
     :return: the context vectors, indexed by word id
     '''
+    # clalculate new normalizing constant for alpha smoothing
+    smooth_counts = 0
+    for k,v in o_counts_in.items():
+        smooth_counts += v**0.75
+    print(tot_count)
+    print(smooth_counts)
+        
     vectors = {}
     for wid0 in wids:
         # count of target word
         c_wid0 = o_counts_in[wid0]
-
-        c_wid1s = []
-        wid1s = co_counts_in[wid0].keys()
-        for w in wid1s:
-            c_wid1s.append(o_counts_in[w])
-        # sum_smooth = np.sum(np.array(list(o_counts.values())) ** alpha)
-        sum_smooth = np.sum(np.array(c_wid1s)** alpha)
         
         wid1_dict = {}
         for wid1 in co_counts_in[wid0]:
             if wid0 != wid1:
                 # count of context word
-                p_wid1 = o_counts_in[wid1]**alpha / sum_smooth
+                c_wid1 = o_counts_in[wid1]
                 # co-occurence counts of target and context word
                 co_count = co_counts_in[wid0][wid1]
-                pmi_temp = pmi_smooth(co_count, c_wid0, p_wid1, tot_count, 0.75)
+                pmi_temp = pmi_smooth(co_count, c_wid0, c_wid1, smooth_counts, tot_count, 0.75)
                 # positive PMI with sparse vector representation
                 if pmi_temp > 0:
                     wid1_dict[wid1] = pmi_temp
@@ -178,40 +180,35 @@ def create_ppmi_vectors_smooth(wids, o_counts_in, co_counts_in, tot_count, alpha
     return vectors
 
 
-def log2fac(k):
-    return log((2*np.pi*k)**(.5),2) + k*log(k/np.exp(1), 2)
-
-
 def p_binom(p, k, n):
-    #return k*log(x) + (n-k)*log(1-x) + log2fac(n) - log2fac(n-k) - log2fac(k)
     return k*log(p) + (n-k)*log(1-p) 
 
 
-def g2_ratio(wids, o_counts, co_counts, N):
+def g2_ratio(wids, o_counts_in, co_counts_in, tot_count):
     vectors = {}
     for wid0 in wids:
         # count of target word
-        c_wid0 = o_counts[wid0]
+        c_wid0 = o_counts_in[wid0]
 
-        c_wid1s = []
-        wid1s = co_counts[wid0].keys()
-        for w in wid1s:
-            c_wid1s.append(o_counts[w])
+#        c_wid1s = []
+#        wid1s = co_counts[wid0].keys()
+#        for w in wid1s:
+#            c_wid1s.append(o_counts[w])
         wid1_dict = {}
-        for wid1 in co_counts[wid0]:
+        for wid1 in co_counts_in[wid0]:
             if wid0 != wid1:
                 # count of context word
-                c_wid1 = o_counts[wid1]
+                c_wid1 = o_counts_in[wid1]
                 # co-occurence counts of target and context word
-                co_count = co_counts[wid0][wid1]
-                p = co_count / N      
-                p1 = c_wid0 / N
-                p2 = c_wid1 / N
+                co_count = co_counts_in[wid0][wid1]
+                p = co_count / tot_count      
+                p1 = c_wid0 / tot_count
+                p2 = c_wid1 / tot_count
 
-                b1 = p_binom(p, c_wid0, N)
-                b2 = p_binom(p, c_wid1, N)
-                b3 = p_binom(p1, c_wid0, N)
-                b4 = p_binom(p2, c_wid1, N)
+                b1 = p_binom(p, c_wid0, tot_count)
+                b2 = p_binom(p, c_wid1, tot_count)
+                b3 = p_binom(p1, c_wid0, tot_count)
+                b4 = p_binom(p2, c_wid1, tot_count)
 
                 wid_ll = (b3 + b4 - b1 - b2)
                 wid1_dict[wid1] = wid_ll
@@ -296,27 +293,28 @@ def make_pairs(items):
 ###################### COS SIMILARITY TESTING #########################
     
 
-#test_words = ["cat", "dog", "mouse", "computer", "@justinbieber"]
-#stemmed_words = [tw_stemmer(w) for w in test_words]
-#all_wids = set([word2wid[x] for x in stemmed_words]) #stemming might create duplicates; remove them
-#wid_pairs = make_pairs(all_wids)
-## (o_counts, co_counts, N) = read_counts("/afs/inf.ed.ac.uk/group/teaching/anlp/lab8/counts", all_wids)
-#(o_counts, co_counts, N) = read_counts("/Users/brianlambert/tweets_2011/counts", all_wids)
+test_words = ["cat", "dog", "mouse", "computer", "@justinbieber"]
+stemmed_words = [tw_stemmer(w) for w in test_words]
+all_wids = set([word2wid[x] for x in stemmed_words]) #stemming might create duplicates; remove them
+wid_pairs = make_pairs(all_wids)
+# (o_counts, co_counts, N) = read_counts("/afs/inf.ed.ac.uk/group/teaching/anlp/lab8/counts", all_wids)
+(o_counts, co_counts, N) = read_counts("/Users/brianlambert/tweets_2011/counts", all_wids)
 
-#PMI
+##PMI
 #vectors = create_ppmi_vectors(all_wids, o_counts, co_counts, N)
 #c_sims = {(wid0,wid1):  cos_sim(vectors[wid0], vectors[wid1]) for (wid0,wid1) in wid_pairs}
 #print("Sort by cosine similarity")
 #print_sorted_pairs(c_sims, o_counts)
 #print("=====================================================")
-
-# PMI smoothed
+#
+## PMI smoothed
 #vectors = create_ppmi_vectors_smooth(all_wids, o_counts, co_counts, N, 2)
 #c_sims = {(wid0,wid1): cos_sim(vectors[wid0], vectors[wid1]) for (wid0,wid1) in wid_pairs}
 #print("Sort by cosine similarity")
 #print_sorted_pairs(c_sims, o_counts)
-
-# Dunning G2
+#print("=====================================================")
+#
+## Dunning G2
 #vectors = g2_ratio(all_wids, o_counts, co_counts, N)
 #c_sims = {(wid0,wid1): vectors[wid0][wid1] for (wid0,wid1) in wid_pairs}
 ##c_sims = {(wid0,wid1): cos_sim(vectors[wid0], vectors[wid1]) for (wid0,wid1) in wid_pairs}
@@ -377,21 +375,21 @@ def get_co_range(lower, upper, counts_filter, co_counts_filter):
 
 # word picking helper code
 o_counts_filter, co_counts_filter = get_counts(200)
+    
+x1 = get_co_range(200, 2000, o_counts_filter, co_counts_filter)
+x2 = get_co_range(20000, 40000, o_counts_filter, co_counts_filter)
+x3 = get_co_range(200000, 250000, o_counts_filter, co_counts_filter)
+x1_sort = get_sorted_c(x1)
+x2_sort = get_sorted_c(x2)
+x3_sort = get_sorted_c(x3)
 
-#x1 = get_co_range(200, 2000, counts_filter, co_counts_filter)
-#x2 = get_co_range(20000, 40000, counts_filter, co_counts_filter)
-#x3 = get_co_range(200000, 250000, counts_filter, co_counts_filter)
-#x1_sort = get_sorted_c(x1)
-#x2_sort = get_sorted_c(x2)
-#x3_sort = get_sorted_c(x3)
-#
-#
-#for k,v in x3_sort.items():
-#    print(wid2word[k] + ': ' + str(o_counts[k]))
-#    print('')
-#    for i in v:
-#        print(wid2word[i] + ': ' + str(o_counts[i]))
-#    print('----------------')
+
+for k,v in x3_sort.items():
+    print(wid2word[k] + ': ' + str(o_counts[k]))
+    print('')
+    for i in v:
+        print(wid2word[i] + ': ' + str(o_counts[i]))
+    print('----------------')
 
 
     
@@ -414,8 +412,9 @@ def get_similarity(sim_fn, o_counts_filter, co_counts_filter, N, all_wids, wid_p
     for pair in wid_pairs:
         wid0 = pair[0]
         wid1 = pair[1]
-            
-            
+        print(wid0)
+        print(wid1)
+
         sims[i, 0] = vectors[wid0][wid1]
         sims[i, 1] = o_counts_filter[wid0]
         sims[i, 2] = o_counts_filter[wid1]
@@ -439,15 +438,12 @@ test_pairs1 =    [(word2wid['dystopia'], word2wid['wubfur']),
                  (word2wid['@appwill'], word2wid['retina']), 
                  (word2wid['#phi'], word2wid['#philadelphia'])]
                            
-
 sim_pmi1 = get_similarity('pmi', o_counts_filter, co_counts_filter, N, all_test_wids1, test_pairs1)
-sim_pmis1 = get_similarity('pmi_smooth', o_counts_filter, co_counts_filter, N, all_test_wids1, test_pairs1)
+sim_pmi_smooth1 = get_similarity('pmi_smooth', o_counts, co_counts_filter, N, all_test_wids1, test_pairs1)
 sim_g21 = get_similarity('g2', o_counts_filter, co_counts_filter, N, all_test_wids1, test_pairs1)
-sim1 = np.column_stack((sim_g21[:, 0], sim_pmis1[:, 0], sim_pmi1))
-
+sim1 = np.column_stack((sim_pmi1[:, 0], sim_pmi_smooth1[:, 0], sim_g21))
 
 ################################################################################
-
 
 all_test_wids2 = {word2wid['rat'], word2wid['mous'], 
                  word2wid['grin'], word2wid['giggl'], 
@@ -460,12 +456,33 @@ test_pairs2 =    [(word2wid['rat'], word2wid['mous']),
                  (word2wid['lisa'], word2wid['simpson']), 
                  (word2wid['belt'], word2wid['bibl']), 
                  (word2wid['virtual'], word2wid['microsoft'])]
-
-                           
+                      
 sim_pmi2 = get_similarity('pmi', o_counts_filter, co_counts_filter, N, all_test_wids2, test_pairs2)
-sim_pmis2 = get_similarity('pmi_smooth', o_counts_filter, co_counts_filter, N, all_test_wids2, test_pairs2)
+sim_pmi_smooth2 = get_similarity('pmi_smooth', o_counts, co_counts_filter, N, all_test_wids2, test_pairs2)
 sim_g22 = get_similarity('g2', o_counts_filter, co_counts_filter, N, all_test_wids2, test_pairs2)
-sim2 = np.column_stack((sim_g22[:, 0], sim_pmis2[:, 0], sim_pmi2))
+sim2 = np.column_stack((sim_pmi2[:, 0], sim_pmi_smooth2[:, 0], sim_g22))
+
+################################################################################
+                           
+all_test_wids3 = {word2wid['spend'], word2wid['death'], 
+                 word2wid['ugli'], word2wid['celebr'], 
+                 word2wid['fake'], word2wid['app'], 
+                 word2wid['download'], word2wid['wonder'], 
+                 word2wid['#oomf'], word2wid['fast']}
+
+test_pairs3 =    [(word2wid['spend'], word2wid['death']), 
+                 (word2wid['ugli'], word2wid['celebr']), 
+                 (word2wid['fake'], word2wid['app']), 
+                 (word2wid['download'], word2wid['wonder']), 
+                 (word2wid['#oomf'], word2wid['fast'])]                                   
+             
+sim_pmi3 = get_similarity('pmi', o_counts_filter, co_counts_filter, N, all_test_wids3, test_pairs3)
+sim_pmi_smooth3 = get_similarity('pmi_smooth', o_counts, co_counts_filter, N, all_test_wids3, test_pairs3)
+sim_g23 = get_similarity('g2', o_counts_filter, co_counts_filter, N, all_test_wids3, test_pairs3)
+sim3 = np.column_stack((sim_pmi3[:, 0], sim_pmi_smooth3[:, 0], sim_g23))
+
+sim_all = np.concatenate((sim1, sim2, sim3))
+np.savetxt("simdata.csv", sim_all)
 
       
 
