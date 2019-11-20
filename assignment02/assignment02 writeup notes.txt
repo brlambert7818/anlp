@@ -1,0 +1,20 @@
+1. what question(s) you investigated.
+
+ - how are different methods affected by context word frequency
+
+2. what words you tested, and how you decided on those words.
+
+ - hold the count of co-occurrences 
+ - keep the count of target words in a relatively small range
+ - incrementally increase the count of the context word
+ - repeat this method for three chunks spanning the dataset
+
+3. what methods you compared. You do not need to describe (P)PMI or cosine similarity, but you should include a brief description of whatever other methods you chose.
+
+ - ppmi with alpha smoothing (context distribution smoothing)
+	- alleviates poi's bias towards rare words by increasing the probability of of sampling a rare context which
+ - Dunning log likelihood ratio 
+
+4. how you analyzed the results and what you concluded.
+
+5. the output of the program after you have completed the Preliminary Task
