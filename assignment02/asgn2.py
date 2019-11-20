@@ -306,14 +306,14 @@ wid_pairs = make_pairs(all_wids)
 #PMI
 vectors = create_ppmi_vectors(all_wids, o_counts, co_counts, N, False)
 c_sims = {(wid0,wid1):  cos_sim(vectors[wid0], vectors[wid1]) for (wid0,wid1) in wid_pairs}
-print("Sort by cosine similarity")
+print("cosine similarity: PMI")
 print_sorted_pairs(c_sims, o_counts)
 print('')
 
 # PMI smoothed
 vectors = create_ppmi_vectors_smooth(all_wids, o_counts, co_counts, N, 0.75, False)
 c_sims = {(wid0,wid1): cos_sim(vectors[wid0], vectors[wid1]) for (wid0,wid1) in wid_pairs}
-print("Sort by cosine similarity")
+print("cosine similarity: PMI Smooth")
 print_sorted_pairs(c_sims, o_counts)
 print('')
 
@@ -321,11 +321,12 @@ print('')
 vectors = g2_ratio(all_wids, o_counts, co_counts, N)
 #c_sims = {(wid0,wid1): vectors[wid0][wid1] for (wid0,wid1) in wid_pairs}
 c_sims = {(wid0,wid1): cos_sim(vectors[wid0], vectors[wid1]) for (wid0,wid1) in wid_pairs}
-print("Sort by cosine similarity")
+print("cosine similarity: G2")
 print_sorted_pairs(c_sims, o_counts)
+print('')
 
 
-###################### DATA AGGREGATION #########################
+###################### CHOOSING TEST WORDS #########################
 
 
 def get_counts(count):
@@ -376,41 +377,43 @@ def get_co_range(lower, upper, counts_filter, co_counts_filter):
     return co_occurs
 
 
-# word picking helper code
-o_counts_filter, co_counts_filter = get_counts(200)
+# print words and counts to aid selection
+#o_counts_filter, co_counts_filter = get_counts(200)
     
-x1 = get_co_range(200, 2000, o_counts_filter, co_counts_filter)
-x2 = get_co_range(20000, 40000, o_counts_filter, co_counts_filter)
-x3 = get_co_range(200000, 250000, o_counts_filter, co_counts_filter)
-x1_sort = get_sorted_c(x1)
-x2_sort = get_sorted_c(x2)
-x3_sort = get_sorted_c(x3)
-
-
-for k,v in x3_sort.items():
-    print(wid2word[k] + ': ' + str(o_counts[k]))
-    print('')
-    for i in v:
-        print(wid2word[i] + ': ' + str(o_counts[i]))
-    print('----------------')
+#x1 = get_co_range(200, 2000, o_counts_filter, co_counts_filter)
+#x2 = get_co_range(20000, 40000, o_counts_filter, co_counts_filter)
+#x3 = get_co_range(200000, 250000, o_counts_filter, co_counts_filter)
+#x1_sort = get_sorted_c(x1)
+#x2_sort = get_sorted_c(x2)
+#x3_sort = get_sorted_c(x3)
+#
+#
+#for k,v in x3_sort.items():
+#    print(wid2word[k] + ': ' + str(o_counts[k]))
+#    print('')
+#    for i in v:
+#        print(wid2word[i] + ': ' + str(o_counts[i]))
+#    print('----------------')
 
 
     
 
-def get_similarity(sim_fn, o_counts_filter, co_counts_filter, N, all_wids, wid_pairs):
+def get_similarity(sim_fn, o_counts_in, co_counts_in, N, all_wids, wid_pairs):
     sims = np.zeros((len(wid_pairs), 6))
     
     cos_sims = {}
     vectors = None
     if sim_fn == 'g2':
-        vectors = g2_ratio(all_wids, o_counts_filter, co_counts_filter, N)
+        vectors = g2_ratio(all_wids, o_counts_in, co_counts_in, N)
         cos_sims['g2'] = {(wid0,wid1):  cos_sim(vectors[wid0], vectors[wid1]) for (wid0,wid1) in wid_pairs}
     elif sim_fn == 'pmi':
-        vectors = create_ppmi_vectors(all_wids, o_counts_filter, co_counts_filter, N, True)
-        cos_sims['pmi'] = {(wid0,wid1):  cos_sim(vectors[wid0], vectors[wid1]) for (wid0,wid1) in wid_pairs}
+        vectors = create_ppmi_vectors(all_wids, o_counts_in, co_counts_in, N, True)
+        vectors_cos = create_ppmi_vectors(all_wids, o_counts_in, co_counts_in, N, False)
+        cos_sims['pmi'] = {(wid0,wid1):  cos_sim(vectors_cos[wid0], vectors_cos[wid1]) for (wid0,wid1) in wid_pairs}
     elif sim_fn == 'pmi_smooth':
-        vectors = create_ppmi_vectors_smooth(all_wids, o_counts_filter, co_counts_filter, N, 2, True)
-        cos_sims['pmi_smooth'] = {(wid0,wid1):  cos_sim(vectors[wid0], vectors[wid1]) for (wid0,wid1) in wid_pairs}
+        vectors = create_ppmi_vectors_smooth(all_wids, o_counts_in, co_counts_in, N, 0.75, True)
+        vectors_cos = create_ppmi_vectors_smooth(all_wids, o_counts_in, co_counts_in, N, 0.75, False)
+        cos_sims['pmi_smooth'] = {(wid0,wid1):  cos_sim(vectors_cos[wid0], vectors_cos[wid1]) for (wid0,wid1) in wid_pairs}
     else:
         raise Exception('Invalid similarity measure')
 
@@ -421,91 +424,136 @@ def get_similarity(sim_fn, o_counts_filter, co_counts_filter, N, all_wids, wid_p
         wid1 = pair[1]
 
         sims[i, 0] = vectors[wid0][wid1]
-        sims[i, 1] = o_counts_filter[wid0]
-        sims[i, 2] = o_counts_filter[wid1]
-        sims[i, 3] = co_counts_filter[wid0][wid1]
+        sims[i, 1] = o_counts_in[wid0]
+        sims[i, 2] = o_counts_in[wid1]
+        sims[i, 3] = co_counts_in[wid0][wid1]
         sims[i, 4] = wid0
         sims[i, 5] = wid1
         
         i += 1
     return sims, cos_sims
 
-N = 138489679
+
+###################### TEST WIDS #########################
+
 all_test_wids1 = {word2wid['dystopia'], word2wid['wubfur'], 
                  word2wid['faidzin'], word2wid['aidin'], 
                  word2wid['@2ksports'], word2wid['#nba2k12'], 
                  word2wid['@appwill'], word2wid['retina'], 
                  word2wid['#phi'], word2wid['#philadelphia']}
-                         
-test_pairs1 =    [(word2wid['dystopia'], word2wid['wubfur']), 
-                 (word2wid['faidzin'], word2wid['aidin']), 
-                 (word2wid['@2ksports'], word2wid['#nba2k12']), 
-                 (word2wid['@appwill'], word2wid['retina']), 
-                 (word2wid['#phi'], word2wid['#philadelphia'])]
-                           
-sim_pmi1, cos_sims1a = get_similarity('pmi', o_counts_filter, co_counts_filter, N, all_test_wids1, test_pairs1)
-sim_pmi_smooth1, cos_sims1b = get_similarity('pmi_smooth', o_counts, co_counts_filter, N, all_test_wids1, test_pairs1)
-sim_g21, cos_sims1c = get_similarity('g2', o_counts_filter, co_counts_filter, N, all_test_wids1, test_pairs1)
-sim1 = np.column_stack((sim_pmi1[:, 0], sim_pmi_smooth1[:, 0], sim_g21))
-
-cos_pmi1 = cos_sims1a['pmi']
-cos_pmi_smooth1 = cos_sims1b['pmi_smooth']
-cos_g21 = cos_sims1c['g2']
-
-print_sorted_pairs(cos_pmi1, o_counts_filter)
-print('')
-print_sorted_pairs(cos_pmi_smooth1, o_counts_filter)
-print('')
-print_sorted_pairs(cos_g21, o_counts_filter)
-
-################################################################################
-
+                          
 all_test_wids2 = {word2wid['rat'], word2wid['mous'], 
                  word2wid['grin'], word2wid['giggl'], 
                  word2wid['lisa'], word2wid['simpson'], 
                  word2wid['belt'], word2wid['bibl'], 
                  word2wid['virtual'], word2wid['microsoft']}
 
-test_pairs2 =    [(word2wid['rat'], word2wid['mous']), 
-                 (word2wid['grin'], word2wid['giggl']), 
-                 (word2wid['lisa'], word2wid['simpson']), 
-                 (word2wid['belt'], word2wid['bibl']), 
-                 (word2wid['virtual'], word2wid['microsoft'])]
-                      
-sim_pmi2, cos_sims2a = get_similarity('pmi', o_counts_filter, co_counts_filter, N, all_test_wids2, test_pairs2)
-sim_pmi_smooth2, cos_sims2a = get_similarity('pmi_smooth', o_counts, co_counts_filter, N, all_test_wids2, test_pairs2)
-sim_g22, cos_sims2a = get_similarity('g2', o_counts_filter, co_counts_filter, N, all_test_wids2, test_pairs2)
-sim2 = np.column_stack((sim_pmi2[:, 0], sim_pmi_smooth2[:, 0], sim_g22))
-
-cos_pmi2 = cos_sims2a['pmi']
-cos_pmi_smooth2 = cos_sims2b['pmi_smooth']
-cos_g22 = cos_sims2c['g2']
-
-################################################################################
-                           
 all_test_wids3 = {word2wid['spend'], word2wid['death'], 
                  word2wid['ugli'], word2wid['celebr'], 
                  word2wid['fake'], word2wid['app'], 
                  word2wid['download'], word2wid['wonder'], 
                  word2wid['#oomf'], word2wid['fast']}
+                         
+all_test_wids = set.union(all_test_wids1, all_test_wids2, all_test_wids3)  
+(o_counts_test, co_counts_test, N) = read_counts("/Users/brianlambert/tweets_2011/counts", all_test_wids)                     
+                                                  
+###################### TEST WID PAIRS #########################
+                 
+test_pairs1 =    [(word2wid['dystopia'], word2wid['wubfur']), 
+                 (word2wid['faidzin'], word2wid['aidin']), 
+                 (word2wid['@2ksports'], word2wid['#nba2k12']), 
+                 (word2wid['@appwill'], word2wid['retina']), 
+                 (word2wid['#phi'], word2wid['#philadelphia'])]   
+                           
+test_pairs2 =    [(word2wid['rat'], word2wid['mous']), 
+                 (word2wid['grin'], word2wid['giggl']), 
+                 (word2wid['lisa'], word2wid['simpson']), 
+                 (word2wid['belt'], word2wid['bibl']), 
+                 (word2wid['virtual'], word2wid['microsoft'])] 
 
 test_pairs3 =    [(word2wid['spend'], word2wid['death']), 
                  (word2wid['ugli'], word2wid['celebr']), 
                  (word2wid['fake'], word2wid['app']), 
                  (word2wid['download'], word2wid['wonder']), 
-                 (word2wid['#oomf'], word2wid['fast'])]                                   
-      
-sim_pmi3, cos_sims3a = get_similarity('pmi', o_counts_filter, co_counts_filter, N, all_test_wids3, test_pairs3)
-sim_pmi_smooth3, cos_sims3a = get_similarity('pmi_smooth', o_counts, co_counts_filter, N, all_test_wids3, test_pairs3)
-sim_g23, cos_sims3a = get_similarity('g2', o_counts_filter, co_counts_filter, N, all_test_wids3, test_pairs3)
+                 (word2wid['#oomf'], word2wid['fast'])]   
+                           
+###################### TEST CONTEXT VECTORS #########################
+                 
+N = 138489679
+                                                      
+sim_pmi1, cos_sims1a = get_similarity('pmi', o_counts_test, co_counts_test, N, all_test_wids1, test_pairs1)
+sim_pmi_smooth1, cos_sims1b = get_similarity('pmi_smooth', o_counts_test, co_counts_test, N, all_test_wids1, test_pairs1)
+sim_g21, cos_sims1c = get_similarity('g2', o_counts_test, co_counts_test, N, all_test_wids1, test_pairs1)
+sim1 = np.column_stack((sim_pmi1[:, 0], sim_pmi_smooth1[:, 0], sim_g21))
+
+sim_pmi2, cos_sims2a = get_similarity('pmi', o_counts_test, co_counts_test, N, all_test_wids2, test_pairs2)
+sim_pmi_smooth2, cos_sims2b = get_similarity('pmi_smooth', o_counts_test, co_counts_test, N, all_test_wids2, test_pairs2)
+sim_g22, cos_sims2c = get_similarity('g2', o_counts_test, co_counts_test, N, all_test_wids2, test_pairs2)
+sim2 = np.column_stack((sim_pmi2[:, 0], sim_pmi_smooth2[:, 0], sim_g22))
+
+sim_pmi3, cos_sims3a = get_similarity('pmi', o_counts_test, co_counts_test, N, all_test_wids3, test_pairs3)
+sim_pmi_smooth3, cos_sims3b = get_similarity('pmi_smooth', o_counts_test, co_counts_test, N, all_test_wids3, test_pairs3)
+sim_g23, cos_sims3c = get_similarity('g2', o_counts_test, co_counts_test, N, all_test_wids3, test_pairs3)
 sim3 = np.column_stack((sim_pmi3[:, 0], sim_pmi_smooth3[:, 0], sim_g23))
 
+sim_all = np.concatenate((sim1, sim2, sim3))
+#np.savetxt("simdata.csv", sim_all)
+
+###################### TEST COS SIMILARITY #########################
+
+# chunk 1
+cos_pmi1 = cos_sims1a['pmi']
+cos_pmi_smooth1 = cos_sims1b['pmi_smooth']
+cos_g21 = cos_sims1c['g2']
+
+print("cosine similarity: PMI test 1")
+print_sorted_pairs(cos_pmi1, o_counts_test)
+print('')
+print("cosine similarity: PMI smooth test 1")
+print_sorted_pairs(cos_pmi_smooth1, o_counts_test)
+print('')
+print("cosine similarity: G2 test 1")
+print_sorted_pairs(cos_g21, o_counts_test)
+print('')
+
+# chunk 2
+cos_pmi2 = cos_sims2a['pmi']
+cos_pmi_smooth2 = cos_sims2b['pmi_smooth']
+cos_g22 = cos_sims2c['g2']
+
+print("cosine similarity: PMI test 2")
+print_sorted_pairs(cos_pmi2, o_counts_test)
+print('')
+print("cosine similarity: PMI smooth test 2")
+print_sorted_pairs(cos_pmi_smooth2, o_counts_test)
+print('')
+print("cosine similarity: G2 test 2")
+print_sorted_pairs(cos_g22, o_counts_test)
+print('')
+
+# chunk 3
 cos_pmi3 = cos_sims3a['pmi']
 cos_pmi_smooth3 = cos_sims3b['pmi_smooth']
 cos_g23 = cos_sims3c['g2']
 
-sim_all = np.concatenate((sim1, sim2, sim3))
-np.savetxt("simdata.csv", sim_all)
+print("cosine similarity: PMI test 3")
+print_sorted_pairs(cos_pmi3, o_counts_test)
+print('')
+print("cosine similarity: PMI smooth test 3")
+print_sorted_pairs(cos_pmi_smooth3, o_counts_test)
+print('')
+print("cosine similarity: G2 test 3")
+print_sorted_pairs(cos_g23, o_counts_test)
+
+                          
+                                  
+      
+
+
+
+
+
+
 
       
 
