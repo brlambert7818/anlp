@@ -1,0 +1,309 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Wed Nov 20 15:07:03 2019
+
+@author: brianlambert
+"""
+
+from __future__ import division
+from math import log,sqrt
+import operator
+from nltk.stem import *
+from nltk.stem.porter import *
+import matplotlib.pyplot as plt
+from scipy.stats import spearmanr
+import numpy as np
+import collections
+import csv
+from load_map import *
+
+
+STEMMER = PorterStemmer()
+
+
+def w_count(word):
+    # helper function to get the count of a word (string)
+    return o_counts[word2wid[word]]
+
+
+def tw_stemmer(word):
+    '''Stems the word using Porter stemmer, unless it is a
+    username (starts with @).  If so, returns the word unchanged.
+
+    :type word: str
+    :param word: the word to be stemmed
+    :rtype: str
+    :return: the stemmed word
+
+    '''
+
+    if word[0] == '@': #don't stem these
+        return word
+    else:
+        return STEMMER.stem(word)
+
+
+def pmi(c_xy, c_x, c_y, tot_count):
+    '''Compute the  pointwise mutual information using cooccurrence counts.
+
+    :type c_xy: int
+    :type c_x: int
+    :type c_y: int
+    :type N: int
+    :param c_xy: coocurrence count of x and y
+    :param c_x: occurrence count of x
+    :param c_y: occurrence count of y
+    :param N: total observation count
+    :rtype: float
+    :return: the pmi value
+    '''
+    return np.log2(tot_count*c_xy / (c_x*c_y))
+
+
+#Do a simple error check using value computed by hand
+if pmi(2,4,3,12) != 1: # these numbers are from our y,z example
+    print("Warning: PMI is incorrectly defined")
+else:
+    print("PMI check passed")
+
+
+def create_ppmi_vectors(wids, o_counts_in, co_counts_in, tot_count, simtable):
+    '''Creates context vectors for the words in wids, using PPMI.
+    These should be sparse vectors.
+
+    :type wids: list of int
+    :type o_counts: dict
+    :type co_counts: dict of dict
+    :type tot_count: int
+    :param wids: the ids of the words to make vectors for
+    :param o_counts: the counts of each word (indexed by id)
+    :param co_counts: the cooccurrence counts of each word pair (indexed by ids)
+    :param tot_count: the total number of observations
+    :rtype: dict
+    :return: the context vectors, indexed by word id
+    '''
+    vectors = {}
+    for wid0 in wids:
+        # count of target word
+        c_wid0 = o_counts_in[wid0]
+        wid1_dict = {}
+        for wid1 in co_counts_in[wid0]:
+            if wid0 != wid1:
+                # count of context word
+                c_wid1 = o_counts_in[wid1]
+                # co-occurence counts of target and context word
+                co_count = co_counts_in[wid0][wid1]
+                pmi_temp = pmi(co_count, c_wid0, c_wid1, tot_count)
+                # positive PMI with sparse vector representation
+                if simtable:
+                    wid1_dict[wid1] = pmi_temp
+                else:
+                    if pmi_temp > 0:
+                        wid1_dict[wid1] = pmi_temp
+        vectors[wid0] = wid1_dict
+    return vectors
+
+
+def read_counts(filename, wids):
+    '''Reads the counts from file. It returns counts for all words, but to
+    save memory it only returns cooccurrence counts for the words
+    whose ids are listed in wids.
+
+    :type filename: string
+    :type wids: list
+    :param filename: where to read info from
+    :param wids: a list of word ids
+    :returns: occurence counts, cooccurence counts, and tot number of observations
+    '''
+    o_counts = {} # Occurence counts
+    co_counts = {} # Cooccurence counts
+    fp = open(filename)
+    N = float(next(fp))
+    for line in fp:
+        line = line.strip().split("\t")
+        wid0 = int(line[0])
+        o_counts[wid0] = int(line[1])
+        if wid0 in wids:
+            co_counts[wid0] = dict([int(y) for y in x.split(" ")] for x in line[2:])
+    return o_counts, co_counts, N
+
+
+def print_sorted_pairs(similarities, o_counts, first=0, last=100):
+    '''Sorts the pairs of words by their similarity scores and prints
+    out the sorted list from index first to last, along with the
+    counts of each word in each pair.
+
+    :type similarities: dict
+    :type o_counts: dict
+    :type first: int
+    :type last: int
+    :param similarities: the word id pairs (keys) with similarity scores (values)
+    :param o_counts: the counts of each word id
+    :param first: index to start printing from
+    :param last: index to stop printing
+    :return: none
+    '''
+    if first < 0: last = len(similarities)
+    for pair in sorted(similarities.keys(), key=lambda x: similarities[x], reverse = True)[first:last]:
+        word_pair = (wid2word[pair[0]], wid2word[pair[1]])
+        print("{:.2f}\t{:30}\t{}\t{}".format(similarities[pair], str(word_pair),
+                                         o_counts[pair[0]], o_counts[pair[1]]))
+
+def freq_v_sim(sims):
+    xs = []
+    ys = []
+    for pair in sims.items():
+        ys.append(pair[1])
+        c0 = o_counts[pair[0][0]]
+        c1 = o_counts[pair[0][1]]
+        xs.append(min(c0,c1))
+    plt.clf() # clear previous plots (if any)
+    plt.xscale('log') #set x axis to log scale. Must do *before* creating plot
+    plt.plot(xs, ys, 'k.') # create the scatter plot
+    plt.xlabel('Min Freq')
+    plt.ylabel('Similarity')
+    print("Freq vs Similarity Spearman correlation = {:.2f}".format(spearmanr(xs,ys)[0]))
+    # plt.show() #display the set of plots
+
+def make_pairs(items):
+    '''Takes a list of items and creates a list of the unique pairs
+    with each pair sorted, so that if (a, b) is a pair, (b, a) is not
+    also included. Self-pairs (a, a) are also not included.
+
+    :type items: list
+    :param items: the list to pair up
+    :return: list of pairs
+
+    '''
+    return [(x, y) for x in items for y in items if x < y]
+
+
+###################### SIMILARITY MEASURES #########################
+
+
+def cos_sim(v0, v1):
+    '''Compute the cosine similarity between two sparse vectors.
+
+    :type v0: dict
+    :type v1: dict
+    :param v0: first sparse vector
+    :param v1: second sparse vector
+    :rtype: float
+    :return: cosine between v0 and v1
+    '''
+    dot_prod = 0
+    for k, v in v0.items():
+        if k in v1.keys():
+            dot_prod += v*v1[k]
+    norms = np.linalg.norm(list(v0.values())) * np.linalg.norm(list(v1.values()))
+    return 0 if norms == 0 else dot_prod / norms
+
+
+def jaccard(v0, v1):
+    dot_prod = 0
+    for k, v in v0.items():
+        if k in v1.keys():
+            dot_prod += v*v1[k]
+    
+    v0_dot = np.linalg.norm(list(v0.values()))**2
+    v1_dot = np.linalg.norm(list(v1.values()))**2
+    return dot_prod / (v0_dot + v1_dot - dot_prod)
+
+
+def dice(v0, v1):
+    dot_prod = 0
+    for k, v in v0.items():
+        if k in v1.keys():
+            dot_prod += v*v1[k]
+    
+    v0_dot = np.linalg.norm(list(v0.values()))**2
+    v1_dot = np.linalg.norm(list(v1.values()))**2
+    return 2*(dot_prod / (v0_dot + v1_dot))
+
+
+###################### PRELIMINARY TASK #########################
+    
+
+test_words = ["cat", "dog", "mouse", "computer", "@justinbieber"]
+stemmed_words = [tw_stemmer(w) for w in test_words]
+all_wids = set([word2wid[x] for x in stemmed_words]) #stemming might create duplicates; remove them
+wid_pairs = make_pairs(all_wids)
+# (o_counts, co_counts, N) = read_counts("/afs/inf.ed.ac.uk/group/teaching/anlp/lab8/counts", all_wids)
+(o_counts, co_counts, N) = read_counts("/Users/brianlambert/tweets_2011/counts", all_wids)
+
+#PMI
+vectors = create_ppmi_vectors(all_wids, o_counts, co_counts, N, False)
+c_sims = {(wid0,wid1):  cos_sim(vectors[wid0], vectors[wid1]) for (wid0,wid1) in wid_pairs}
+print("cosine similarity")
+print_sorted_pairs(c_sims, o_counts)
+print('')
+
+
+###################### MAIN TASK #########################
+
+#c_sims = {(wid0,wid1):  jaccard(vectors[wid0], vectors[wid1]) for (wid0,wid1) in wid_pairs}
+#print("Jaccard similarity")
+#print_sorted_pairs(c_sims, o_counts)
+#print('')
+#
+#c_sims = {(wid0,wid1):  dice(vectors[wid0], vectors[wid1]) for (wid0,wid1) in wid_pairs}
+#print("Dice similarity")
+#print_sorted_pairs(c_sims, o_counts)
+                          
+                         
+set1 = {}
+set1_pairs = set({})
+set1_wids = set({})
+with open('/Users/brianlambert/Desktop/anlp/assignment02/rareWords/dataset.csv', 'r') as csvfile:
+    pairs1 = csv.reader(csvfile)
+#    next(pairs1)
+    for row in pairs1:
+        r0 = tw_stemmer(row[0])
+        r1 = tw_stemmer(row[1])
+        if r0 in word2wid.keys() and r1 in word2wid.keys():           
+            wid0 = word2wid[r0]
+            wid1 = word2wid[r1]
+            set1_pairs.add((wid0,wid1))
+            if wid0 not in set1_wids:
+                set1_wids.add(wid0)
+            if wid1 not in set1_wids:
+                set1_wids.add(wid1)
+            if wid0 not in set1.keys():
+                set1[wid0] = {wid1: float(row[2])}
+            else:
+                set1[wid0][wid1] = float(row[2])
+                
+(o_counts_set1, co_counts_set1, N_set1) = read_counts("/Users/brianlambert/tweets_2011/counts", set1_wids)              
+vectors = create_ppmi_vectors(set1_wids, o_counts, co_counts_set1, N, False)
+cos_sims = {(wid0,wid1):  dice(vectors[wid0], vectors[wid1]) for (wid0,wid1) in set1_pairs}
+
+corr_cos = np.zeros((len(cos_sims),2))
+i = 0
+for pair in set1_pairs:
+    wid0 = pair[0]
+    wid1 = pair[1]
+    
+    corr_cos[i][0] = cos_sims[(wid0, wid1)]
+    corr_cos[i][1] = set1[wid0][wid1] / 10
+    i += 1
+
+print(np.corrcoef(corr_cos[:, 0], corr_cos[:, 1]))
+    
+
+
+            
+
+         
+
+
+
+
+
+
+
+      
+
+            
+        
+

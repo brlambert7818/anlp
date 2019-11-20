@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 from scipy.stats import spearmanr
 import numpy as np
 import collections
+import csv
 from load_map import *
 
 
@@ -324,6 +325,46 @@ c_sims = {(wid0,wid1): cos_sim(vectors[wid0], vectors[wid1]) for (wid0,wid1) in 
 print("cosine similarity: G2")
 print_sorted_pairs(c_sims, o_counts)
 print('')
+
+
+
+set1 = {}
+set1_pairs = set({})
+set1_wids = set({})
+with open('/Users/brianlambert/Desktop/anlp/assignment02/wordsim353/set2.csv', 'r') as csvfile:
+    pairs1 = csv.reader(csvfile)
+    next(pairs1)
+    for row in pairs1:
+        r0 = tw_stemmer(row[0])
+        r1 = tw_stemmer(row[1])
+        if r0 in word2wid.keys() and r1 in word2wid.keys():           
+            wid0 = word2wid[r0]
+            wid1 = word2wid[r1]
+            set1_pairs.add((wid0,wid1))
+            if wid0 not in set1_wids:
+                set1_wids.add(wid0)
+            if wid1 not in set1_wids:
+                set1_wids.add(wid1)
+            if wid0 not in set1.keys():
+                set1[wid0] = {wid1: float(row[2])}
+            else:
+                set1[wid0][wid1] = float(row[2])
+                
+(o_counts_set1, co_counts_set1, N_set1) = read_counts("/Users/brianlambert/tweets_2011/counts", set1_wids)              
+vectors = create_ppmi_vectors_smooth(set1_wids, o_counts, co_counts_set1, N, 0.1, False)
+cos_sims = {(wid0,wid1):  cos_sim(vectors[wid0], vectors[wid1]) for (wid0,wid1) in set1_pairs}
+
+corr_cos = np.zeros((len(cos_sims),2))
+i = 0
+for pair in set1_pairs:
+    wid0 = pair[0]
+    wid1 = pair[1]
+    
+    corr_cos[i][0] = cos_sims[(wid0, wid1)]
+    corr_cos[i][1] = set1[wid0][wid1] / 10
+    i += 1
+
+print(np.corrcoef(corr_cos[:, 0], corr_cos[:, 1]))
 
 
 ###################### CHOOSING TEST WORDS #########################
